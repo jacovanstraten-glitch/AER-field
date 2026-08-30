@@ -1,0 +1,1220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#00554B">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="AER Field">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>AER Field App</title>
+<style>
+  :root{
+    --green:#00554B; --purple:#9F55AE; --yellow:#FBEF0E;
+    --bg:#FAFAFA; --card:#fff; --ink:#212121; --muted:#5a6270; --line:rgba(0,0,0,.08);
+    --danger:#c62828; --ok:#2e7d32;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg); color:var(--ink); font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; -webkit-text-size-adjust:100%;}
+  .app{max-width:640px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+  header{position:sticky;top:0;z-index:20;background:var(--green);color:#fff;display:flex;align-items:center;gap:10px;padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top));box-shadow:0 1px 4px rgba(0,0,0,.15)}
+  header .back{background:transparent;border:0;color:#fff;font-size:22px;line-height:1;padding:4px 6px;cursor:pointer;display:none}
+  header h1{font-size:18px;margin:0;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header .hbtn{background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:10px;padding:7px 10px;font-size:14px;cursor:pointer}
+  .accent{height:6px;background:linear-gradient(90deg,var(--green),var(--purple));position:relative}
+  .accent::after{content:"";position:absolute;right:3px;top:-1px;width:8px;height:8px;border-radius:50%;background:var(--yellow)}
+  main{flex:1;padding:16px;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+  .screen{display:none}
+  .screen.active{display:block;animation:fade .15s ease}
+  @keyframes fade{from{opacity:.4}to{opacity:1}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  h2.section{font-size:16px;margin:18px 2px 8px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 4px;font-weight:600}
+  input,select,textarea{width:100%;font:inherit;padding:12px;border:1px solid #ccc;border-radius:10px;background:#fff;color:var(--ink)}
+  input:focus,select,textarea:focus{outline:2px solid var(--purple);outline-offset:-1px}
+  textarea{min-height:70px;resize:vertical}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:12px;padding:14px 16px;font-size:16px;font-weight:700;cursor:pointer;background:var(--green);color:#fff;text-align:center}
+  .btn:active{transform:translateY(1px)}
+  .btn.secondary{background:#fff;color:var(--purple);border:1.5px solid var(--purple)}
+  .btn.ghost{background:#eef0f2;color:var(--ink)}
+  .btn.hero{padding:20px 16px;font-size:20px;flex-direction:column;gap:2px}
+  .btn.hero small{font-weight:500;font-size:12px;opacity:.9}
+  .btn.sm{width:auto;padding:9px 12px;font-size:14px;border-radius:10px}
+  .btn:disabled{opacity:.5}
+  .row{display:flex;gap:8px;align-items:center}
+  .row.wrap{flex-wrap:wrap}
+  .spacer{height:10px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:20px;font-size:13px;font-weight:700}
+  .chip.ok{background:rgba(159,85,174,.12);color:var(--purple)}
+  .chip.warn{background:var(--yellow);color:#000}
+  .muted{color:var(--muted)}
+  .kv{display:flex;gap:8px;padding:3px 0;font-size:15px}
+  .kv b{min-width:120px;color:var(--muted);font-weight:600}
+  .banner{border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:14px}
+  .banner.warn{background:#fff3e0;color:#7a4f00;border:1px solid #ffcc80}
+  .banner.info{background:#e8f5f2;color:#0a4a41;border:1px solid #9ecfc6}
+  .pill{font-size:12px;font-weight:700;padding:2px 8px;border-radius:12px;background:#eceff1;color:#607d8b}
+  .pill.green{background:rgba(0,85,75,.12);color:var(--green)}
+  .sample{display:flex;gap:8px;align-items:center;margin:0 0 8px}
+  .sample .idx{min-width:26px;color:var(--muted);font-size:13px;text-align:right}
+  .sample input{flex:1}
+  .stat{font-style:italic;font-size:14px;color:var(--muted);margin:4px 0 0}
+  .perim{font-size:12px;color:#1565c0;font-style:italic;margin:2px 0 0 30px}
+  .photos{display:flex;flex-wrap:wrap;gap:8px}
+  .thumb{width:96px;height:96px;border-radius:10px;object-fit:cover;border:1px solid var(--line)}
+  .addphoto{width:96px;height:96px;border-radius:10px;border:1.5px dashed var(--purple);background:#faf5fc;color:var(--purple);font-size:28px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .list-item{display:flex;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:12px;margin:0 0 8px;background:#fff}
+  .list-item .grow{flex:1;min-width:0}
+  .list-item .t{font-weight:700}
+  .list-item .s{font-size:13px;color:var(--muted)}
+  .fab-note{font-size:13px;color:var(--muted);margin:6px 2px}
+  /* camera */
+  #camWrap{position:fixed;inset:0;background:#000;z-index:50;display:none;flex-direction:column}
+  #camWrap.on{display:flex}
+  #camVideo{flex:1;width:100%;object-fit:cover;background:#000}
+  #scanVideo{flex:1;width:100%;object-fit:cover;background:#000}
+  .cambar{display:flex;gap:12px;align-items:center;justify-content:center;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom));background:#000}
+  .shutter{width:68px;height:68px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.4);cursor:pointer}
+  .camclose{position:absolute;top:calc(10px + env(safe-area-inset-top));left:12px;background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-size:15px;z-index:2;cursor:pointer}
+  .scan-frame{position:absolute;top:0;left:0;right:0;bottom:80px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .scan-frame .box{width:70vw;max-width:320px;height:70vw;max-height:320px;border:3px solid var(--yellow);border-radius:18px;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
+  .scan-hint{position:absolute;bottom:96px;left:0;right:0;text-align:center;color:#fff;font-size:14px;text-shadow:0 1px 2px #000}
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:none;align-items:center;justify-content:center;padding:16px}
+  .modal.on{display:flex}
+  .modal .box{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:88vh;overflow:auto;padding:18px}
+  .modal h3{margin:0 0 10px}
+  .sumrow{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .sumrow b{min-width:130px;color:var(--muted);font-weight:600}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom));background:#222;color:#fff;padding:12px 16px;border-radius:12px;z-index:80;font-size:14px;max-width:90%;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.on{opacity:1}
+  .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .toggle:last-child{border-bottom:0}
+  .switch{position:relative;width:46px;height:26px;flex:0 0 auto}
+  .switch input{opacity:0;width:0;height:0;position:absolute}
+  .slider{position:absolute;inset:0;background:#ccc;border-radius:26px;transition:.2s}
+  .slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+  .switch input:checked + .slider{background:var(--green)}
+  .switch input:checked + .slider::before{transform:translateX(20px)}
+  .seg{display:flex;border:1px solid #ccc;border-radius:10px;overflow:hidden}
+  .seg button{flex:1;border:0;background:#fff;padding:10px;font-weight:700;color:var(--muted);cursor:pointer}
+  .seg button.on{background:var(--green);color:#fff}
+  #beStep button{font-size:12px;padding:9px 3px;line-height:1.15}
+  hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <button class="back" id="backBtn" aria-label="Terug">‹</button>
+    <h1 id="title">AER Field App</h1>
+    <button class="hbtn" id="settingsBtn">⚙︎</button>
+  </header>
+  <div class="accent"></div>
+  <main>
+    <!-- ============ HOME ============ -->
+    <section class="screen active" id="screen-home">
+      <div id="warnBanner"></div>
+      <button class="btn hero" id="btnScan">📷 Scan &amp; load batch<small>Camera scans the QR/barcode</small></button>
+      <div class="spacer"></div>
+      <div class="card" id="csvCard">
+        <div class="row" style="justify-content:space-between">
+          <div><b>Batch file</b><div class="s muted" id="csvStatus">Not loaded yet</div></div>
+          <button class="btn secondary sm" id="btnPickCsv">Choose file</button>
+        </div>
+      </div>
+      <div class="row" style="gap:10px">
+        <button class="btn ghost" id="btnBrowse">📋 Batches</button>
+        <button class="btn ghost" id="btnManual">✚ Manual</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn secondary" id="btnExport">⬆︎ Export (CSV + photos)</button>
+      <div class="fab-note" id="exportNote"></div>
+      <hr>
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <div><b>In queue</b><div class="s muted" id="pendingSub">0 inspections</div></div>
+          <button class="btn ghost sm" id="btnPending">View / edit</button>
+        </div>
+      </div>
+      <p class="muted" style="font-size:12px;text-align:center;margin-top:20px">AER Field App · Phase 1 + 2 · replaces qc_app3<br>Inspections + photos and batch changes (count · location · step)</p>
+    </section>
+
+    <!-- ============ BATCH INFO ============ -->
+    <section class="screen" id="screen-batch">
+      <div class="card">
+        <div id="batchTitle" style="font-size:20px;font-weight:700;margin-bottom:6px">Batch</div>
+        <div id="batchTop"></div>
+      </div>
+      <div class="card" id="batchOtherCard" style="display:none">
+        <b>Other details</b>
+        <div id="batchOther" style="margin-top:6px"></div>
+        <button class="btn ghost sm" id="btnMoreDetails" style="margin-top:8px;display:none">Show more…</button>
+      </div>
+      <button class="btn" id="btnStartInspection">✚ Start inspection</button>
+      <div class="spacer"></div>
+      <button class="btn secondary" id="btnEditBatch">✏️ Update batch</button>
+    </section>
+
+    <!-- ============ BATCH EDIT ============ -->
+    <section class="screen" id="screen-batchedit">
+      <div class="card">
+        <div id="beTitle" style="font-size:18px;font-weight:700">Update batch</div>
+        <div class="s muted" id="beMeta"></div>
+      </div>
+
+      <h2 class="section">Plant count</h2>
+      <div class="card">
+        <label>Count type</label>
+        <div class="seg" id="beKind">
+          <button data-kind="count" class="on">Interim count</button>
+          <button data-kind="harvest">Final harvest / handover</button>
+        </div>
+        <div class="s muted" id="beKindHint" style="margin-top:6px">Interim count = corrects the current number of plants still growing.</div>
+        <div class="spacer"></div>
+        <label id="beCountLabel">New plant count (still growing)</label>
+        <input id="beCount" inputmode="numeric" placeholder="e.g. 3400">
+        <div class="spacer"></div>
+        <div class="row" style="gap:10px">
+          <div style="flex:1"><label>Expected (optional)</label><input id="beExpected" inputmode="numeric" placeholder="planned"></div>
+          <div style="flex:1"><label>Waste %</label><input id="beWaste" readonly placeholder="—" style="background:#f3f4f6"></div>
+        </div>
+      </div>
+
+      <h2 class="section">Placement</h2>
+      <div class="card">
+        <label>Location</label>
+        <input id="beLocation" placeholder="e.g. Greenhouse / Cold 4°C">
+        <div class="spacer"></div>
+        <div class="row" style="gap:10px">
+          <div style="flex:1"><label>Pots</label><input id="bePots" inputmode="numeric" placeholder="—"></div>
+          <div style="flex:1"><label>Plants / pot</label><input id="bePPP" inputmode="numeric" placeholder="—"></div>
+        </div>
+      </div>
+
+      <h2 class="section">Step status</h2>
+      <div class="card">
+        <div class="seg" id="beStep">
+          <button data-step="">No change</button>
+          <button data-step="planned">Planned</button>
+          <button data-step="running">Running</button>
+          <button data-step="finished">Finished</button>
+          <button data-step="skipped">Skipped</button>
+        </div>
+      </div>
+
+      <h2 class="section">Note</h2>
+      <div class="card"><textarea id="beNote" placeholder="Optional"></textarea></div>
+
+      <button class="btn" id="beSave">💾 Save batch change</button>
+      <div class="spacer"></div>
+    </section>
+
+    <!-- ============ INSPECTION FORM ============ -->
+    <section class="screen" id="screen-insp">
+      <h2 class="section">Batch</h2>
+      <div class="card">
+        <label>Batch code</label>
+        <input id="inBatch" placeholder="e.g. 7-26-003-A" inputmode="text">
+        <div class="s muted" id="inBatchMeta" style="margin-top:6px"></div>
+      </div>
+
+      <h2 class="section">Counting — plants per pot</h2>
+      <div class="card">
+        <label>Expected value</label>
+        <input id="inExpected" inputmode="decimal" placeholder="e.g. 100">
+        <div class="s muted" style="margin-top:4px">Prefilled from the protocol (units per crate) when the batch's step is known.</div>
+        <div class="spacer"></div>
+        <div class="row" style="justify-content:space-between">
+          <b>Pot counts (plants per pot)</b>
+          <div class="row">
+            <button class="btn ghost sm" data-add="count">＋</button>
+            <button class="btn ghost sm" data-rem="count">－</button>
+          </div>
+        </div>
+        <div id="countRows" style="margin-top:8px"></div>
+        <div class="stat" id="countStat">Mean: —   SD: —</div>
+        <div class="s muted" id="pppHint" style="margin-top:4px">Count at least 3 pots — plants/pot is updated automatically on save.</div>
+      </div>
+
+      <h2 class="section">Bulb / tuber / rhizome — size</h2>
+      <div class="card">
+        <div class="row" style="justify-content:flex-end">
+          <button class="btn ghost sm" data-add="size">＋</button>
+          <button class="btn ghost sm" data-rem="size">－</button>
+        </div>
+        <div id="sizeRows" style="margin-top:8px"></div>
+        <div class="stat" id="sizeStat">Mean: —   SD: —</div>
+      </div>
+
+      <h2 class="section">Leaf colour</h2>
+      <div class="card">
+        <select id="inLeaf"><option value="">Select colour…</option></select>
+      </div>
+
+      <h2 class="section">Disease notes</h2>
+      <div class="card">
+        <div class="row" style="align-items:flex-start">
+          <textarea id="inDisease" placeholder="Optional — type or use the mic"></textarea>
+          <button class="btn ghost sm mic" data-mic="inDisease" title="Spreek in">🎤</button>
+        </div>
+      </div>
+
+      <h2 class="section">Other notes</h2>
+      <div class="card">
+        <div class="row" style="align-items:flex-start">
+          <textarea id="inOther" placeholder="Optional — type or use the mic"></textarea>
+          <button class="btn ghost sm mic" data-mic="inOther" title="Spreek in">🎤</button>
+        </div>
+      </div>
+
+      <h2 class="section">Photos <span class="pill green" id="photoCount">0 photos</span></h2>
+      <div class="card">
+        <div class="photos" id="photoStrip">
+          <div class="addphoto" id="btnAddPhoto">＋</div>
+        </div>
+      </div>
+
+      <button class="btn" id="btnReviewSave">💾 Review &amp; save</button>
+      <div class="spacer"></div>
+    </section>
+
+    <!-- ============ PENDING LIST ============ -->
+    <section class="screen" id="screen-pending">
+      <div id="pendingList"></div>
+      <p class="muted" id="pendingEmpty" style="text-align:center;display:none">No inspections in queue.</p>
+    </section>
+
+    <!-- ============ BROWSE BATCHES ============ -->
+    <section class="screen" id="screen-browse">
+      <input id="browseSearch" placeholder="Search batch, client or variety…" style="margin-bottom:12px">
+      <div id="browseList"></div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="screen" id="screen-settings">
+      <h2 class="section">Photo overlay</h2>
+      <div class="card">
+        <label>Text size on photo</label>
+        <div class="seg" id="fontSeg">
+          <button data-font="0.030">Small</button>
+          <button data-font="0.045">Normal</button>
+          <button data-font="0.060">Large</button>
+          <button data-font="0.080">XL</button>
+        </div>
+        <div class="s muted" style="margin-top:6px">Larger = easier to read on the print. Default: Large.</div>
+        <div class="spacer"></div>
+        <label>JPEG quality</label>
+        <div class="seg" id="qualSeg">
+          <button data-qual="0.5">Low</button>
+          <button data-qual="0.7">Medium</button>
+          <button data-qual="0.9">High</button>
+        </div>
+      </div>
+      <h2 class="section">Fields on the photo</h2>
+      <div class="card" id="wmFields"></div>
+      <h2 class="section">Default leaf colour</h2>
+      <div class="card"><select id="setLeaf"></select></div>
+      <h2 class="section">Queue warning</h2>
+      <div class="card">
+        <label>Warn at photo count ≥</label>
+        <input id="setWarn" inputmode="numeric" type="number" min="10" max="500">
+      </div>
+      <h2 class="section">Export folder (desktop)</h2>
+      <div class="card">
+        <div class="s muted" id="exportDirStatus" style="margin-bottom:8px"></div>
+        <div class="row" style="gap:10px">
+          <button class="btn secondary sm" id="btnConnectDir">Connect folder</button>
+          <button class="btn ghost sm" id="btnForgetDir" style="display:none">Disconnect</button>
+        </div>
+        <div class="s muted" style="margin-top:8px">On desktop the export writes the CSVs + loose photos straight into this OneDrive folder — no sharing or unzipping. On the phone it shares/downloads.</div>
+      </div>
+      <h2 class="section">About</h2>
+      <div class="card muted" style="font-size:13px">
+        AER Field App — Phase 1 + 2. Records inspections and photos (like qc_app3) and batch changes (count, location, pots, step status). Exports inspections as CSV + photos, and batch changes as a separate batch_edits CSV (ready for the Phase 3 sync into AER_Data.xlsx). The inspection CSV format is unchanged, so your existing OneDrive import keeps working.<br><br>
+        Tip: open this file in Chrome and choose "Add to home screen" to use it as an app (works offline).
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Camera overlay (photo) -->
+<div id="camWrap">
+  <button class="camclose" id="camClose">✕ Close</button>
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div class="cambar"><button class="shutter" id="camShutter" aria-label="Foto"></button></div>
+</div>
+
+<!-- Scan overlay (QR) -->
+<div id="scanWrap" class="modal" style="background:#000;padding:0">
+  <div style="position:fixed;inset:0;display:flex;flex-direction:column">
+    <button class="camclose" id="scanClose">✕ Close</button>
+    <video id="scanVideo" autoplay playsinline muted></video>
+    <div class="scan-frame"><div class="box"></div></div>
+    <div class="scan-hint">Point at the batch QR code</div>
+    <div class="cambar" style="flex-direction:column;gap:8px">
+      <div class="muted" style="color:#fff;font-size:13px">Scanner not working?</div>
+      <button class="btn ghost sm" id="scanManual">Enter batch code manually</button>
+    </div>
+  </div>
+</div>
+
+<!-- Review modal -->
+<div class="modal" id="reviewModal">
+  <div class="box">
+    <h3 id="reviewTitle">Save inspection?</h3>
+    <div id="reviewBody"></div>
+    <div class="row" style="margin-top:16px;gap:10px">
+      <button class="btn ghost" id="reviewCancel">Back</button>
+      <button class="btn" id="reviewConfirm">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+"use strict";
+/* ================================================================
+   AER Field App — Fase 1 (PWA)
+   Replaces the Flutter qc_app3 field app. Feature parity for
+   inspections + photos, with adjustable overlay font and identical
+   CSV+ZIP export format. Offline via IndexedDB.
+   ================================================================ */
+
+/* ---------- tiny helpers ---------- */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const el = (t,props={},kids=[])=>{const e=document.createElement(t);Object.assign(e,props);for(const k of [].concat(kids))if(k!=null)e.append(k);return e;};
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2600);}
+function pad(n,w=2){return String(n).padStart(w,'0');}
+function sanitize(s){return (s||'').replace(/[^A-Za-z0-9 _-]/g,'_').trim();}
+function toNum(s){const v=parseFloat(String(s==null?'':s).trim().replace(',','.'));return isNaN(v)?0:v;}
+function fmt(x){return (!isFinite(x))?'0':x.toFixed(2);}
+function mean(xs){return xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:0;}
+function stdev(xs){if(xs.length<=1)return 0;const m=mean(xs);let s=0;for(const x of xs){const d=x-m;s+=d*d;}return Math.sqrt(s/(xs.length-1));}
+function fmtDateDMY(d){return pad(d.getDate())+'-'+pad(d.getMonth()+1)+'-'+d.getFullYear();}
+function fmtYMD(d){return String(d.getFullYear()).slice(2)+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+
+/* ---------- IndexedDB ---------- */
+const DB={_db:null};
+DB.open=function(){return new Promise((res,rej)=>{
+  const r=indexedDB.open('aer-field',2);
+  r.onupgradeneeded=()=>{const db=r.result;
+    if(!db.objectStoreNames.contains('kv'))db.createObjectStore('kv');
+    if(!db.objectStoreNames.contains('pending'))db.createObjectStore('pending',{keyPath:'id'});
+    if(!db.objectStoreNames.contains('photos'))db.createObjectStore('photos');
+    if(!db.objectStoreNames.contains('batchedits'))db.createObjectStore('batchedits',{keyPath:'id'});
+  };
+  r.onsuccess=()=>{DB._db=r.result;res(DB._db);};
+  r.onerror=()=>rej(r.error);
+});};
+DB._tx=function(store,mode){return DB._db.transaction(store,mode).objectStore(store);};
+DB.get=function(store,key){return new Promise((res,rej)=>{const q=DB._tx(store,'readonly').get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});};
+DB.set=function(store,key,val){return new Promise((res,rej)=>{const s=DB._tx(store,'readwrite');const kp=(store==='pending'||store==='batchedits');const q=kp?s.put(val):s.put(val,key);q.onsuccess=()=>res();q.onerror=()=>rej(q.error);});};
+DB.del=function(store,key){return new Promise((res,rej)=>{const q=DB._tx(store,'readwrite').delete(key);q.onsuccess=()=>res();q.onerror=()=>rej(q.error);});};
+DB.all=function(store){return new Promise((res,rej)=>{const q=DB._tx(store,'readonly').getAll();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error);});};
+DB.clear=function(store){return new Promise((res,rej)=>{const q=DB._tx(store,'readwrite').clear();q.onsuccess=()=>res();q.onerror=()=>rej(q.error);});};
+
+/* ---------- Settings ---------- */
+const WATERMARK_FIELDS=[
+  ['variety','Variety',true],['batch','Batch',true],['date','Date',true],
+  ['start_date','Start',true],['age','Age',true],
+  ['client_name','Client',false],['client_id','Client ID',false],
+  ['product_name','Product',false],['product_id','Product ID',false],
+  ['product_form','Form',false],['production_location','Location',false],
+  ['planning_id','Planning ID',false],['status','Status',false],
+];
+const LEAF_COLORS=['Dark green','Green','Light green','Yellowing','Brown'];
+const DEFAULT_SETTINGS={fontFrac:0.060,quality:0.9,leaf:'Green',warn:90,
+  wm:WATERMARK_FIELDS.filter(f=>f[2]).map(f=>f[0])};
+let SETTINGS=Object.assign({},DEFAULT_SETTINGS);
+async function loadSettings(){const s=await DB.get('kv','settings');if(s)SETTINGS=Object.assign({},DEFAULT_SETTINGS,s);}
+async function saveSettings(){await DB.set('kv','settings',SETTINGS);}
+
+/* ---------- Batches CSV ---------- */
+let BATCHES={headers:[],rows:[],name:'',index:new Map()};
+let PROTOCOL={byStep:new Map()};
+const K_BATCH=['Batch_Number','Batch Number','BatchNumber','Batch','Code'];
+const K_CLIENT=['Client_Name','Client Name','Customer Name','Client','Customer'];
+const K_VARIETY=['Variety','Variety Name','Cultivar'];
+const K_OTHER_ORDER=['Start_Date','Product_Form','Client_ID','Product_ID','Product_Name','Production_Location','Planning_ID','Status'];
+
+function fieldFrom(row,keys){
+  if(!row)return '';
+  for(const k of keys){const v=row[k]!=null?row[k]:row[k.toLowerCase()];if(v!=null&&String(v).trim())return String(v).trim();}
+  const lowers=new Set(keys.map(k=>k.toLowerCase()));
+  for(const k in row){if(lowers.has(k.toLowerCase())){const v=String(row[k]).trim();if(v)return v;}}
+  return '';
+}
+/* RFC4180-ish parser with delimiter detection + one-level unwrap fallback */
+function parseCSV(text){
+  if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
+  const firstLine=(text.split(/\r?\n/).find(l=>l.trim())||'');
+  const delim=( (firstLine.match(/;/g)||[]).length > (firstLine.match(/,/g)||[]).length )?';':',';
+  const rows=[];let field='',row=[],inq=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(inq){
+      if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else inq=false; }
+      else field+=c;
+    }else{
+      if(c==='"')inq=true;
+      else if(c===delim){row.push(field);field='';}
+      else if(c==='\n'){row.push(field);rows.push(row);row=[];field='';}
+      else if(c==='\r'){}
+      else field+=c;
+    }
+  }
+  if(field.length||row.length){row.push(field);rows.push(row);}
+  let data=rows.filter(r=>r.some(v=>String(v).trim()!==''));
+  if(!data.length)return {headers:[],rows:[]};
+  let headers=data[0].map(h=>String(h).trim());
+  // Fallback: double-wrapped CSV (whole line was one quoted field containing commas)
+  if(headers.length===1 && headers[0].indexOf(',')>-1){
+    const unwrapped=data.map(r=>parseCSVLine(r[0]));
+    headers=unwrapped[0].map(h=>String(h).trim());
+    data=unwrapped;
+  }
+  const out=[];
+  for(let i=1;i<data.length;i++){const r=data[i];const m={};let any=false;
+    for(let c=0;c<headers.length&&c<r.length;c++){const v=String(r[c]).trim();m[headers[c]]=v;if(v)any=true;}
+    if(any)out.push(m);
+  }
+  return {headers,rows:out};
+}
+function parseCSVLine(line){const out=[];let f='',q=false;for(let i=0;i<line.length;i++){const c=line[i];
+  if(q){if(c==='"'){if(line[i+1]==='"'){f+='"';i++;}else q=false;}else f+=c;}
+  else{if(c==='"')q=true;else if(c===','){out.push(f);f='';}else f+=c;}}
+  out.push(f);return out;}
+
+function indexBatches(){BATCHES.index=new Map();for(const r of BATCHES.rows){const c=fieldFrom(r,K_BATCH);if(c)BATCHES.index.set(c,r);}}
+function indexProtocol(steps){PROTOCOL.byStep=new Map();for(const r of (steps||[])){const code=String(r['Step Code']||r['Task Code']||r['Step_Code']||'').trim().toUpperCase();if(code)PROTOCOL.byStep.set(code,r);}}
+function unitsPerCrateFor(row){
+  const code=String(fieldFrom(row,['Task Code','Task_Code','Step Code','Step_Code'])||'').trim().toUpperCase();
+  if(!code)return '';
+  const st=PROTOCOL.byStep.get(code);if(!st)return '';
+  const v=st['Units Per Crate']||st['Units_Per_Crate']||st['Units per crate']||'';
+  return v!==''?String(v).trim():'';
+}
+async function loadBatchesFromStore(){
+  const saved=await DB.get('kv','batchesData');
+  if(saved&&saved.rows){BATCHES.headers=saved.headers||[];BATCHES.rows=saved.rows;BATCHES.name=saved.name||'';indexBatches();indexProtocol(saved.steps);return;}
+  const old=await DB.get('kv','batchesCsv');
+  if(old&&old.text){const p=parseCSV(old.text);BATCHES.headers=p.headers;BATCHES.rows=p.rows;BATCHES.name=old.name||'';indexBatches();}
+}
+function sheetToObjects(ws){
+  const arr=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+  const clean=arr.filter(r=>r.some(v=>String(v).trim()!==''));
+  if(!clean.length)return {headers:[],rows:[]};
+  const headers=clean[0].map(h=>String(h).trim());
+  const rows=[];
+  for(let i=1;i<clean.length;i++){const m={};let any=false;for(let c=0;c<headers.length;c++){const v=String(clean[i][c]==null?'':clean[i][c]).trim();m[headers[c]]=v;if(v)any=true;}if(any)rows.push(m);}
+  return {headers,rows};
+}
+async function pickBatchesFile(file){
+  const name=(file.name||'').toLowerCase();
+  let headers=[],rows=[],steps=[];
+  try{
+    if(name.endsWith('.xlsx')||name.endsWith('.xlsm')||name.endsWith('.xls')){
+      if(!window.XLSX){toast('Excel reader not loaded — connect to the internet and try again');return false;}
+      const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:'array'});
+      const sheetName=wb.SheetNames.find(s=>s.toLowerCase()==='batches')||wb.SheetNames[0];
+      const b=sheetToObjects(wb.Sheets[sheetName]);headers=b.headers;rows=b.rows;
+      const psName=wb.SheetNames.find(s=>s.toLowerCase()==='process_steps'||s.toLowerCase()==='process steps');
+      if(psName)steps=sheetToObjects(wb.Sheets[psName]).rows;
+    }else{
+      const p=parseCSV(await file.text());headers=p.headers;rows=p.rows;
+    }
+  }catch(e){toast('Could not read file: '+e.message);return false;}
+  if(!rows.length){toast('No rows found');return false;}
+  BATCHES.headers=headers;BATCHES.rows=rows;BATCHES.name=file.name;indexBatches();indexProtocol(steps);
+  await DB.set('kv','batchesData',{rows,headers,name:file.name,steps});
+  return true;
+}
+
+/* ================================================================
+   Navigation
+   ================================================================ */
+const stack=['home'];
+const TITLES={home:'AER Field App',batch:'Batch',batchedit:'Update batch',insp:'New inspection',pending:'Queue',browse:'Batches',settings:'Settings'};
+function show(name,push=true){
+  $$('.screen').forEach(s=>s.classList.remove('active'));
+  $('#screen-'+name).classList.add('active');
+  $('#title').textContent=TITLES[name]||'AER';
+  if(push){if(stack[stack.length-1]!==name)stack.push(name);}
+  $('#backBtn').style.display=stack.length>1?'block':'none';
+  $('#settingsBtn').style.display=(name==='home')?'block':'none';
+  window.scrollTo(0,0);
+}
+function back(){
+  if(stack.length>1){stack.pop();const prev=stack[stack.length-1];show(prev,false);}
+}
+$('#backBtn').onclick=back;
+$('#settingsBtn').onclick=()=>{buildSettings();show('settings');};
+
+/* ================================================================
+   Home
+   ================================================================ */
+async function refreshHome(){
+  $('#csvStatus').textContent=BATCHES.rows.length?(BATCHES.name+' — '+BATCHES.rows.length+' batches'):'Not loaded yet';
+  $('#csvCard').querySelector('.s').className='s '+(BATCHES.rows.length?'':'muted');
+  const pend=await DB.all('pending');
+  const edits=await DB.all('batchedits');
+  let photos=0;pend.forEach(p=>photos+=(p.photos||[]).length);
+  const parts=[pend.length+' inspection'+(pend.length===1?'':'s')];
+  if(edits.length)parts.push(edits.length+' batch change'+(edits.length===1?'':'s'));
+  if(photos)parts.push(photos+' photos');
+  $('#pendingSub').textContent=parts.join(' · ');
+  $('#exportNote').textContent=(pend.length||edits.length)?('Ready to export: '+pend.length+' inspection(s), '+edits.length+' batch change(s), '+photos+' photos'):'';
+  $('#btnExport').disabled=!(pend.length||edits.length);
+  const warn=$('#warnBanner');
+  if(photos>=(SETTINGS.warn||90)){warn.innerHTML='<div class="banner warn">⚠️ '+photos+' photos in queue — export soon to avoid memory issues.</div>';}
+  else warn.innerHTML='';
+}
+$('#btnPickCsv').onclick=()=>pickFile('.csv,.xlsx,.xlsm,text/csv',async f=>{if(await pickBatchesFile(f)){toast('Batches loaded');refreshHome();}});
+$('#btnScan').onclick=startScan;
+$('#btnManual').onclick=()=>openInspection({batchCode:'',variety:'',row:null});
+$('#btnBrowse').onclick=()=>{if(!BATCHES.rows.length){toast('Load a batch file first');return;}buildBrowse();show('browse');};
+$('#btnPending').onclick=()=>{buildPending();show('pending');};
+$('#btnExport').onclick=exportPackage;
+
+function pickFile(accept,cb){
+  const inp=el('input',{type:'file',accept});inp.style.display='none';
+  inp.onchange=()=>{if(inp.files[0])cb(inp.files[0]);inp.remove();};
+  document.body.append(inp);inp.click();
+}
+
+/* ================================================================
+   QR Scan
+   ================================================================ */
+let scanStream=null,scanRAF=null,barcodeDetector=null;
+function cameraBlockedMsg(){return (!window.isSecureContext)?'Camera needs an https page — open the hosted version, not the local file.':'Camera unavailable on this device/browser.';}
+async function startScan(){
+  if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast(cameraBlockedMsg()+' Enter the code manually.');manualBatch();return;}
+  try{
+    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+  }catch(e){toast('Camera unavailable — enter the code manually');manualBatch();return;}
+  const v=$('#scanVideo');v.srcObject=scanStream;$('#scanWrap').classList.add('on');
+  await v.play().catch(()=>{});
+  if('BarcodeDetector' in window){
+    try{barcodeDetector=new BarcodeDetector({formats:['qr_code','code_128','code_39','ean_13','data_matrix']});}
+    catch(e){barcodeDetector=null;}
+  }
+  if(barcodeDetector){scanLoop();}
+  else{toast('QR detection not supported on this device — use manual');}
+}
+async function scanLoop(){
+  if(!scanStream)return;
+  const v=$('#scanVideo');
+  try{
+    if(v.readyState>=2){
+      const codes=await barcodeDetector.detect(v);
+      if(codes&&codes.length){const raw=(codes[0].rawValue||'').trim();if(raw){stopScan();onBatchCode(raw);return;}}
+    }
+  }catch(e){}
+  scanRAF=requestAnimationFrame(scanLoop);
+}
+function stopScan(){
+  if(scanRAF)cancelAnimationFrame(scanRAF);scanRAF=null;
+  if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}
+  $('#scanWrap').classList.remove('on');
+}
+$('#scanClose').onclick=stopScan;
+$('#scanManual').onclick=()=>{stopScan();manualBatch();};
+function manualBatch(){
+  const code=prompt('Batch code:');
+  if(code&&code.trim())onBatchCode(code.trim());
+}
+function onBatchCode(code){
+  const row=BATCHES.index.get(code)||null;
+  openBatchInfo(code,row);
+}
+
+/* ================================================================
+   Batch Info
+   ================================================================ */
+let currentBatch={code:'',row:null,variety:''};
+function openBatchInfo(code,row){
+  currentBatch={code,row,variety:fieldFrom(row,K_VARIETY)};
+  const client=fieldFrom(row,K_CLIENT);
+  $('#batchTitle').textContent='Batch '+(fieldFrom(row,K_BATCH)||code||'-');
+  const top=$('#batchTop');top.innerHTML='';
+  if(!row){top.append(el('div',{className:'banner warn',textContent:'Batch not found in the loaded file. You can still inspect; the code is recorded.'}));}
+  if(currentBatch.variety)top.append(kvEl('Variety',currentBatch.variety));
+  if(client)top.append(kvEl('Client',client));
+  // other details
+  const otherCard=$('#batchOtherCard'),other=$('#batchOther');other.innerHTML='';
+  let entries=[];
+  if(row){
+    const skip=new Set([...K_BATCH,...K_CLIENT,...K_VARIETY].map(k=>k.toLowerCase()));
+    for(const k in row){const v=row[k];if(!k.trim()||!String(v).trim())continue;if(skip.has(k.toLowerCase()))continue;entries.push([k,String(v).trim()]);}
+    entries.sort((a,b)=>{const ai=K_OTHER_ORDER.indexOf(a[0]),bi=K_OTHER_ORDER.indexOf(b[0]);if(ai>-1&&bi>-1)return ai-bi;if(ai>-1)return -1;if(bi>-1)return 1;return a[0].toLowerCase().localeCompare(b[0].toLowerCase());});
+  }
+  if(entries.length){
+    otherCard.style.display='';
+    const preview=4;const showMore=entries.length>preview;let expanded=false;
+    const render=()=>{other.innerHTML='';(expanded?entries:entries.slice(0,preview)).forEach(e=>other.append(kvEl(e[0],e[1])));};
+    render();
+    const more=$('#btnMoreDetails');
+    if(showMore){more.style.display='';more.textContent='Show '+(entries.length-preview)+' more…';more.onclick=()=>{expanded=!expanded;render();more.textContent=expanded?'Show less':'Show '+(entries.length-preview)+' more…';};}
+    else more.style.display='none';
+  }else otherCard.style.display='none';
+  show('batch');
+}
+function kvEl(k,v){const d=el('div',{className:'kv'});d.append(el('b',{textContent:k}),el('span',{textContent:v}));return d;}
+$('#btnStartInspection').onclick=()=>openInspection({batchCode:currentBatch.code,variety:currentBatch.variety,row:currentBatch.row});
+$('#btnEditBatch').onclick=()=>openBatchEdit(currentBatch.code,currentBatch.row,currentBatch.variety);
+
+/* ================================================================
+   Batch edit (Fase 2) — capture & propose batch mutations
+   ================================================================ */
+let batchEdit={code:'',row:null,variety:'',kind:'count',step:''};
+function openBatchEdit(code,row,variety,prefill){
+  row=row||BATCHES.index.get(code)||null;
+  batchEdit={code:code||'',row,variety:variety||fieldFrom(row,K_VARIETY),kind:'count',step:''};
+  $('#beTitle').textContent='Update batch — '+(code||'-');
+  $('#beMeta').textContent=[batchEdit.variety,fieldFrom(row,K_CLIENT)].filter(Boolean).join(' · ')||(row?'':'(not in file — recorded anyway)');
+  $('#beCount').value=(prefill&&prefill.count!=null)?prefill.count:'';
+  $('#beExpected').value=fieldFrom(row,['Plants Or Scales','Plants_Or_Scales','Expected'])||'';
+  $('#beLocation').value=fieldFrom(row,['Location','Production_Location','Production Location'])||'';
+  $('#bePots').value=fieldFrom(row,['Pots'])||'';
+  $('#bePPP').value=fieldFrom(row,['Plants Per Pot','Plants_Per_Pot'])||'';
+  $('#beNote').value='';$('#beWaste').value='';
+  setBeKind((prefill&&prefill.kind)||'count');setBeStep('');
+  show('batchedit');
+}
+function setBeKind(k){batchEdit.kind=k;$$('#beKind button').forEach(b=>b.classList.toggle('on',b.dataset.kind===k));
+  $('#beCountLabel').textContent=(k==='harvest')?'Number harvested / handed over':'New plant count (still growing)';
+  $('#beKindHint').textContent=(k==='harvest')?'Final harvest = records the harvested/handed-over number and computes waste vs expected.':'Interim count = corrects the current number of plants still growing.';
+  recalcWaste();}
+$$('#beKind button').forEach(b=>b.onclick=()=>setBeKind(b.dataset.kind));
+function setBeStep(s){batchEdit.step=s;$$('#beStep button').forEach(b=>b.classList.toggle('on',b.dataset.step===s));}
+$$('#beStep button').forEach(b=>b.onclick=()=>setBeStep(b.dataset.step));
+function recalcWaste(){const exp=toNum($('#beExpected').value),n=toNum($('#beCount').value);
+  if(batchEdit.kind==='harvest'&&exp>0&&$('#beCount').value.trim()!==''){$('#beWaste').value=Math.max(0,(exp-n)/exp*100).toFixed(1)+'%';}
+  else $('#beWaste').value='';}
+$('#beCount').oninput=recalcWaste;$('#beExpected').oninput=recalcWaste;
+$('#beSave').onclick=async()=>{
+  const count=$('#beCount').value.trim(),location=$('#beLocation').value.trim();
+  const pots=$('#bePots').value.trim(),ppp=$('#bePPP').value.trim(),step=batchEdit.step,note=$('#beNote').value.trim();
+  const exp=$('#beExpected').value.trim();
+  if(!batchEdit.code){toast('No batch code');return;}
+  if(count===''&&location===''&&pots===''&&ppp===''&&!step&&!note){toast('Nothing filled in to save');return;}
+  const acts=[];
+  if(count!=='')acts.push(batchEdit.kind==='harvest'?'harvest':'count_update');
+  if(location!=='')acts.push('location');
+  if(pots!==''||ppp!=='')acts.push('pots');
+  if(step)acts.push('step');
+  const rec={
+    id:'be_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    timestamp:new Date().toISOString(),
+    batchCode:batchEdit.code, variety:batchEdit.variety||'',
+    action:acts.join('+')||'note',
+    plantsOrScales:(count!==''&&batchEdit.kind==='count')?toNum(count):'',
+    plantsHarvested:(count!==''&&batchEdit.kind==='harvest')?toNum(count):'',
+    expected:exp!==''?toNum(exp):'',
+    wastePct:($('#beWaste').value||'').replace('%',''),
+    pots:pots!==''?toNum(pots):'',
+    plantsPerPot:ppp!==''?toNum(ppp):'',
+    location:location, stepStatus:step, note:note,
+  };
+  await DB.set('batchedits',null,rec);
+  const n=(await DB.all('batchedits')).length;
+  toast('Batch change saved · queue: '+n);
+  back();refreshHome();
+};
+
+/* ================================================================
+   Browse batches
+   ================================================================ */
+function buildBrowse(){
+  const q=($('#browseSearch').value||'').toLowerCase();
+  const list=$('#browseList');list.innerHTML='';
+  let n=0;
+  for(const r of BATCHES.rows){
+    const code=fieldFrom(r,K_BATCH),client=fieldFrom(r,K_CLIENT),variety=fieldFrom(r,K_VARIETY);
+    const hay=(code+' '+client+' '+variety).toLowerCase();
+    if(q&&!hay.includes(q))continue;
+    if(++n>300)break;
+    const item=el('div',{className:'list-item'});
+    const g=el('div',{className:'grow'});
+    g.append(el('div',{className:'t',textContent:code||'(no code)'}),el('div',{className:'s',textContent:[variety,client].filter(Boolean).join(' · ')}));
+    item.append(g,el('button',{className:'btn ghost sm',textContent:'Open',onclick:()=>openBatchInfo(code,r)}));
+    list.append(item);
+  }
+  if(!n)list.append(el('p',{className:'muted',textContent:'No results.'}));
+}
+$('#browseSearch').oninput=buildBrowse;
+
+/* ================================================================
+   Inspection form
+   ================================================================ */
+let insp={batchCode:'',variety:'',row:null,editId:null,photos:[]}; // photos: [{key,thumb}]
+let countCtrls=[],sizeCtrls=[];
+function openInspection(opts){
+  insp={batchCode:opts.batchCode||'',variety:opts.variety||'',row:opts.row||null,editId:opts.editId||null,photos:opts.photos?opts.photos.slice():[]};
+  countCtrls=opts.counts?opts.counts.slice():[];
+  sizeCtrls=opts.sizes?opts.sizes.slice():[];
+  $('#inBatch').value=insp.batchCode;
+  $('#inExpected').value=(opts.expected!=null&&opts.expected!==0)?opts.expected:(unitsPerCrateFor(opts.row)||'');
+  $('#inDisease').value=opts.disease||'';
+  $('#inOther').value=opts.other||'';
+  // leaf dropdown
+  const leaf=$('#inLeaf');leaf.innerHTML='<option value="">Select colour…</option>';LEAF_COLORS.forEach(c=>leaf.append(el('option',{value:c,textContent:c})));
+  leaf.value=opts.leaf||'';
+  updateBatchMeta();
+  renderCountRows();renderSizeRows();renderPhotos();
+  show('insp');
+}
+function updateBatchMeta(){
+  const code=$('#inBatch').value.trim();
+  const row=BATCHES.index.get(code);
+  if(row){insp.row=row;insp.variety=fieldFrom(row,K_VARIETY);
+    $('#inBatchMeta').textContent=[insp.variety,fieldFrom(row,K_CLIENT)].filter(Boolean).join(' · ');}
+  else{$('#inBatchMeta').textContent=code?'(not in file — recorded anyway)':'';}
+}
+$('#inBatch').oninput=updateBatchMeta;
+
+function renderCountRows(){
+  const wrap=$('#countRows');wrap.innerHTML='';
+  countCtrls.forEach((val,i)=>{
+    const s=el('div',{className:'sample'});
+    const inp=el('input',{value:val,inputMode:'decimal',placeholder:'e.g. 12'});
+    inp.oninput=()=>{countCtrls[i]=inp.value;updateCountStat();};
+    s.append(el('div',{className:'idx',textContent:'#'+(i+1)}),inp);
+    wrap.append(s);
+  });
+  if(!countCtrls.length)wrap.append(el('div',{className:'muted',style:'font-size:14px',textContent:'No rows yet — tap ＋'}));
+  updateCountStat();
+}
+function updateCountStat(){const xs=countCtrls.map(toNum);$('#countStat').textContent=countCtrls.length?('Mean: '+fmt(mean(xs))+'   SD: '+fmt(stdev(xs))):'Mean: —   SD: —';
+  const h=$('#pppHint');if(!h)return;const n=countCtrls.length;
+  if(n>=3)h.textContent='✓ '+n+' pots counted → plants/pot will be set to '+Math.round(mean(xs))+' on save.';
+  else h.textContent='Count at least '+(3-n)+' more pot'+((3-n)===1?'':'s')+' to auto-update plants/pot ('+n+'/3).';
+}
+
+function sizeErr(v){const raw=String(v).trim().replace(',','.');if(!raw)return null;const d=parseFloat(raw);if(isNaN(d))return 'Invalid number';if(d<=0)return '> 0 required';if(d>99)return 'Max 99 mm';return null;}
+function renderSizeRows(){
+  const wrap=$('#sizeRows');wrap.innerHTML='';
+  sizeCtrls.forEach((val,i)=>{
+    const box=el('div');
+    const s=el('div',{className:'sample'});
+    const inp=el('input',{value:val,inputMode:'decimal',placeholder:'e.g. 20 (mm)'});
+    inp.oninput=()=>{sizeCtrls[i]=inp.value;renderSizeStat();const err=sizeErr(inp.value);inp.style.borderColor=err?'var(--danger)':'#ccc';perim.textContent=perimText(inp.value)||'';};
+    s.append(el('div',{className:'idx',textContent:'#'+(i+1)}),inp);
+    const perim=el('div',{className:'perim',textContent:perimText(val)||''});
+    box.append(s,perim);wrap.append(box);
+  });
+  if(!sizeCtrls.length)wrap.append(el('div',{className:'muted',style:'font-size:14px',textContent:'No sizes yet — tap ＋'}));
+  renderSizeStat();
+}
+function perimText(v){const raw=String(v).trim().replace(',','.');const d=parseFloat(raw);if(isNaN(d)||d<=0||d>99)return null;return 'Perimeter: '+(d*Math.PI/10).toFixed(1)+' cm';}
+function renderSizeStat(){
+  const valid=sizeCtrls.map(toNum).filter(d=>d>0&&d<=99);
+  if(!valid.length){$('#sizeStat').textContent='Mean: —   SD: —';return;}
+  const md=mean(valid),sd=stdev(valid),mp=md*Math.PI/10;
+  $('#sizeStat').textContent='Mean: '+fmt(md)+' mm   SD: '+fmt(sd)+' mm   |   Mean perimeter: '+mp.toFixed(1)+' cm';
+}
+$$('[data-add]').forEach(b=>b.onclick=()=>{if(b.dataset.add==='count'){countCtrls.push('');renderCountRows();}else{sizeCtrls.push('');renderSizeRows();}});
+$$('[data-rem]').forEach(b=>b.onclick=()=>{if(b.dataset.rem==='count'){countCtrls.pop();renderCountRows();}else{sizeCtrls.pop();renderSizeRows();}});
+
+/* photos on form */
+function renderPhotos(){
+  const strip=$('#photoStrip');strip.innerHTML='';
+  insp.photos.forEach((p,i)=>{
+    const img=el('img',{className:'thumb',src:p.thumb});
+    img.onclick=()=>{if(confirm('Delete photo?')){insp.photos.splice(i,1);renderPhotos();}};
+    strip.append(img);
+  });
+  strip.append(el('div',{className:'addphoto',id:'btnAddPhoto',textContent:'＋',onclick:openPhotoCam}));
+  $('#photoCount').textContent=insp.photos.length+' photo'+(insp.photos.length===1?'':'s');
+}
+
+/* ---------- Speech to text (optional) ---------- */
+let recog=null,recogTarget=null;
+function initSpeech(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return null;const r=new SR();r.lang='nl-NL';r.interimResults=true;r.continuous=false;return r;}
+$$('.mic').forEach(b=>b.onclick=()=>{
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('Speech recognition not available on this device');return;}
+  const targetId=b.dataset.mic;const ta=$('#'+targetId);
+  if(recog){try{recog.stop();}catch(e){}recog=null;b.textContent='🎤';return;}
+  recog=new SR();recog.lang='nl-NL';recog.interimResults=true;const base=ta.value;
+  recog.onresult=(ev)=>{let s='';for(const r of ev.results)s+=r[0].transcript;ta.value=(base?base+' ':'')+s;};
+  recog.onend=()=>{recog=null;b.textContent='🎤';};
+  recog.onerror=()=>{recog=null;b.textContent='🎤';};
+  b.textContent='⏺';recog.start();
+});
+
+/* ================================================================
+   Camera + watermark (photo)
+   ================================================================ */
+let camStream=null;
+async function openPhotoCam(){
+  if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast(cameraBlockedMsg());return;}
+  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:3000},height:{ideal:4000}}});}
+  catch(e){toast('Camera unavailable');return;}
+  const v=$('#camVideo');v.srcObject=camStream;$('#camWrap').classList.add('on');await v.play().catch(()=>{});
+}
+function closeCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}$('#camWrap').classList.remove('on');}
+$('#camClose').onclick=closeCam;
+$('#camShutter').onclick=async()=>{
+  const v=$('#camVideo');const w=v.videoWidth,h=v.videoHeight;if(!w){toast('Camera not ready yet');return;}
+  const cv=el('canvas');cv.width=w;cv.height=h;const ctx=cv.getContext('2d');
+  ctx.drawImage(v,0,0,w,h);
+  drawWatermark(ctx,w,h);
+  const quality=SETTINGS.quality||0.9;
+  const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',quality));
+  const thumb=makeThumb(cv);
+  const key='ph_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+  await DB.set('photos',key,blob);
+  insp.photos.push({key,thumb});
+  closeCam();renderPhotos();toast('Photo added');
+};
+function makeThumb(srcCanvas){const t=el('canvas');const s=Math.min(1,200/srcCanvas.width);t.width=srcCanvas.width*s;t.height=srcCanvas.height*s;t.getContext('2d').drawImage(srcCanvas,0,0,t.width,t.height);return t.toDataURL('image/jpeg',0.6);}
+
+function resolveWM(id,now){
+  const row=insp.row;const batch=sanitize($('#inBatch').value||'-');const variety=sanitize(insp.variety||'-');
+  const csv=(keys)=>sanitize(fieldFrom(row,keys));
+  switch(id){
+    case 'variety':return variety;
+    case 'batch':return batch;
+    case 'date':return fmtDateDMY(now);
+    case 'start_date':{const d=parseDate(fieldFrom(row,['Start_Date','Start Date','StartDate']));return d?fmtDateDMY(d):'';}
+    case 'age':{const d=parseDate(fieldFrom(row,['Start_Date','Start Date','StartDate']));if(!d)return '';const days=Math.floor((now-d)/86400000);return (days>=0?Math.floor(days/7):0)+'w';}
+    case 'client_name':return csv(['Client_Name','Client Name','Client','Customer']);
+    case 'client_id':return csv(['Client_ID','ClientID','Client Id']);
+    case 'product_name':return csv(['Product_Name','ProductName']);
+    case 'product_id':return csv(['Product_ID','ProductID','Product Id']);
+    case 'product_form':return csv(['Product_Form','ProductForm','Form']);
+    case 'production_location':return csv(['Production_Location','Production Location','Location']);
+    case 'planning_id':return csv(['Planning_ID','PlanningID','Planning Id']);
+    case 'status':return csv(['Status']);
+  }
+  return '';
+}
+function parseDate(s){s=(s||'').trim();if(!s)return null;let m;
+  if((m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/)))return new Date(+m[1],+m[2]-1,+m[3]);
+  if((m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/)))return new Date(+m[3],+m[2]-1,+m[1]);
+  const d=new Date(s);return isNaN(d)?null:d;}
+function drawWatermark(ctx,w,h){
+  const now=new Date();
+  const chunks=[];
+  for(const f of WATERMARK_FIELDS){if(!SETTINGS.wm.includes(f[0]))continue;const v=resolveWM(f[0],now);if(v)chunks.push(f[1]+': '+v);}
+  if(!chunks.length)return;
+  const fontPx=Math.max(18,Math.round(h*(SETTINGS.fontFrac||0.06)));
+  const pad=Math.round(Math.min(Math.max(h*0.02,14),40));
+  ctx.font='700 '+fontPx+'px sans-serif';ctx.textBaseline='top';
+  const maxW=w-2*pad;
+  // greedy wrap
+  const words=chunks.join('   ').split(' ');
+  const lines=[];let cur='';
+  const measure=t=>ctx.measureText(t).width;
+  // wrap by chunk separators primarily, then words
+  let tmp='';
+  for(const ch of chunks){const cand=tmp?tmp+'   '+ch:ch;if(measure(cand)>maxW&&tmp){lines.push(tmp);tmp=ch;}else tmp=cand;}
+  if(tmp)lines.push(tmp);
+  // further wrap any overlong line by words
+  const finalLines=[];
+  for(const ln of lines){if(measure(ln)<=maxW){finalLines.push(ln);continue;}let c='';for(const wd of ln.split(' ')){const cc=c?c+' '+wd:wd;if(measure(cc)>maxW&&c){finalLines.push(c);c=wd;}else c=cc;}if(c)finalLines.push(c);}
+  const lineH=fontPx+Math.round(fontPx*0.25);
+  const stripH=Math.min(finalLines.length*lineH+2*pad, Math.round(h*0.4));
+  ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(0,h-stripH,w,stripH);
+  ctx.fillStyle='#fff';
+  for(let i=0;i<finalLines.length;i++){const y=h-stripH+pad+i*lineH;ctx.fillText(finalLines[i],pad,y);}
+}
+
+/* ================================================================
+   Review & Save
+   ================================================================ */
+$('#btnReviewSave').onclick=()=>{
+  const batch=$('#inBatch').value.trim();
+  if(!batch){toast('Batchcode is verplicht');return;}
+  if(sizeCtrls.some(v=>sizeErr(v))){toast('Corrigeer eerst de ongeldige maten');return;}
+  const counts=countCtrls.map(toNum),sizes=sizeCtrls.map(toNum);
+  const validDiam=sizes.filter(d=>d>0&&d<=99);
+  const rows=[
+    ['Batch code',batch],
+    ['Expected',$('#inExpected').value.trim()||'—'],
+    ['Counts',counts.length?counts.length+' values — mean '+fmt(mean(counts)):'None'],
+    ['Sizes',sizes.length?sizes.length+' values — mean '+fmt(mean(sizes))+' mm':'None'],
+    ['Mean perimeter',validDiam.length?(mean(validDiam)*Math.PI/10).toFixed(1)+' cm':'—'],
+    ['Leaf colour',$('#inLeaf').value||'—'],
+    ['Disease',$('#inDisease').value.trim()||'—'],
+    ['Other',$('#inOther').value.trim()||'—'],
+    ['Photos',insp.photos.length+' photo'+(insp.photos.length===1?'':'s')],
+  ];
+  const body=$('#reviewBody');body.innerHTML='';
+  rows.forEach(r=>{const d=el('div',{className:'sumrow'});d.append(el('b',{textContent:r[0]}),el('span',{textContent:r[1]}));body.append(d);});
+  $('#reviewTitle').textContent=insp.editId?'Save changes?':'Save inspection?';
+  $('#reviewModal').classList.add('on');
+};
+$('#reviewCancel').onclick=()=>$('#reviewModal').classList.remove('on');
+$('#reviewConfirm').onclick=async()=>{
+  $('#reviewModal').classList.remove('on');
+  const rec={
+    id:insp.editId||('insp_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)),
+    batchCode:$('#inBatch').value.trim(),
+    variety:insp.variety||'',
+    expected:toNum($('#inExpected').value),
+    counts:countCtrls.map(toNum),
+    sizes:sizeCtrls.map(toNum),
+    leaf:$('#inLeaf').value||'',
+    disease:$('#inDisease').value.trim(),
+    other:$('#inOther').value.trim(),
+    photos:insp.photos.map(p=>p.key),
+    photoThumbs:insp.photos.map(p=>p.thumb),
+    timestamp:insp.timestamp||new Date().toISOString(),
+  };
+  await DB.set('pending',null,rec);
+  const pend=await DB.all('pending');
+  toast((insp.editId?'Inspection updated':'Inspection saved')+' · queue: '+pend.length);
+  const counts=rec.counts||[];
+  if(counts.length>=3 && rec.batchCode){
+    const ppp=Math.round(mean(counts));
+    const be={id:'be_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),timestamp:new Date().toISOString(),
+      batchCode:rec.batchCode,variety:rec.variety||'',action:'ppp_from_count',
+      plantsOrScales:'',plantsHarvested:'',expected:'',wastePct:'',pots:'',plantsPerPot:ppp,location:'',stepStatus:'',
+      note:'auto: '+counts.length+' pot counts (mean '+mean(counts).toFixed(1)+')'};
+    await DB.set('batchedits',null,be);
+    toast('Plants/pot set to '+ppp+' (from '+counts.length+' pot counts)');
+  }
+  back();refreshHome();
+};
+
+/* ================================================================
+   Pending list (view/edit/delete)
+   ================================================================ */
+async function buildPending(){
+  const list=$('#pendingList');list.innerHTML='';
+  const items=(await DB.all('pending')).sort((a,b)=>String(b.timestamp).localeCompare(String(a.timestamp)));
+  const edits=(await DB.all('batchedits')).sort((a,b)=>String(b.timestamp).localeCompare(String(a.timestamp)));
+  $('#pendingEmpty').style.display=(items.length||edits.length)?'none':'block';
+  if(items.length)list.append(el('h2',{className:'section',textContent:'Inspections'}));
+  for(const it of items){
+    const item=el('div',{className:'list-item'});
+    const g=el('div',{className:'grow'});
+    const when=new Date(it.timestamp);
+    g.append(el('div',{className:'t',textContent:it.batchCode||'(geen batch)'}),
+      el('div',{className:'s',textContent:[it.variety,fmtDateDMY(when)+' '+pad(when.getHours())+':'+pad(when.getMinutes()),(it.photos||[]).length+' photos'].filter(Boolean).join(' · ')}));
+    const edit=el('button',{className:'btn ghost sm',textContent:'Bewerk',onclick:()=>editPending(it)});
+    const del=el('button',{className:'btn ghost sm',textContent:'🗑',onclick:async()=>{if(confirm('Delete inspection?')){for(const k of (it.photos||[]))await DB.del('photos',k);await DB.del('pending',it.id);buildPending();refreshHome();}}});
+    item.append(g,edit,del);
+    list.append(item);
+  }
+  if(edits.length)list.append(el('h2',{className:'section',textContent:'Batch changes'}));
+  for(const be of edits){
+    const item=el('div',{className:'list-item'});
+    const g=el('div',{className:'grow'});
+    const bits=[];
+    if(be.plantsOrScales!=='')bits.push('count → '+be.plantsOrScales);
+    if(be.plantsHarvested!=='')bits.push('harvested → '+be.plantsHarvested+(be.wastePct?(' (waste '+be.wastePct+'%)'):''));
+    if(be.location)bits.push('location → '+be.location);
+    if(be.pots!=='')bits.push('pots → '+be.pots);
+    if(be.plantsPerPot!=='')bits.push('p/pot → '+be.plantsPerPot);
+    if(be.stepStatus)bits.push('step → '+be.stepStatus);
+    if(be.note)bits.push('“'+be.note+'”');
+    g.append(el('div',{className:'t',textContent:be.batchCode||'(no batch)'}),el('div',{className:'s',textContent:bits.join(' · ')||'(empty)'}));
+    const del=el('button',{className:'btn ghost sm',textContent:'🗑',onclick:async()=>{if(confirm('Delete batch change?')){await DB.del('batchedits',be.id);buildPending();refreshHome();}}});
+    item.append(g,del);list.append(item);
+  }
+}
+async function editPending(it){
+  const photos=[];
+  for(let i=0;i<(it.photos||[]).length;i++)photos.push({key:it.photos[i],thumb:(it.photoThumbs||[])[i]||''});
+  openInspection({batchCode:it.batchCode,variety:it.variety,row:BATCHES.index.get(it.batchCode)||null,editId:it.id,
+    expected:it.expected,counts:it.counts.map(String),sizes:it.sizes.map(String),leaf:it.leaf,disease:it.disease,other:it.other,photos});
+  insp.timestamp=it.timestamp;
+}
+
+/* ================================================================
+   Export: CSV (exact format) + store-only ZIP
+   ================================================================ */
+function buildCsv(items){
+  const H=['timestamp','batchNumber','Customer Name','Variety','expected','actuals','mean','stdev_n-1','size_actuals','size_mean','size_stdev_n-1','leafColor','diseaseNotes','otherNotes','photoCount'];
+  const esc=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const lines=[H.join(';')];
+  for(const i of items){
+    const row=BATCHES.index.get(i.batchCode)||{};
+    const customer=fieldFrom(row,K_CLIENT);
+    const variety=fieldFrom(row,K_VARIETY)||i.variety||'';
+    const counts=(i.counts||[]).filter(x=>x||x===0);
+    const sizes=(i.sizes||[]).filter(x=>x||x===0);
+    const hasC=(i.counts||[]).length>0,hasS=(i.sizes||[]).length>0;
+    lines.push([
+      esc(i.timestamp),
+      esc(i.batchCode),
+      esc(customer),
+      esc(variety),
+      String(i.expected||0),
+      hasC?esc((i.counts).map(String).join(' | ')):'',
+      hasC?String(mean(i.counts)):'',
+      hasC?String(stdev(i.counts)):'',
+      hasS?esc((i.sizes).map(String).join(' | ')):'',
+      hasS?String(mean(i.sizes)):'',
+      hasS?String(stdev(i.sizes)):'',
+      esc(i.leaf||''),
+      esc(i.disease||''),
+      esc(i.other||''),
+      String((i.photos||[]).length),
+    ].join(';'));
+  }
+  return lines.join('\r\n')+'\r\n';
+}
+function photoFileName(it,idx){const d=new Date(it.timestamp);const prefix=sanitize(it.batchCode||'-')+'_'+fmtYMD(d)+'_'+sanitize(it.variety||'-')+'_';return prefix+idx+'.jpg';}
+
+function buildBatchEditsCsv(edits){
+  const H=['timestamp','batchNumber','variety','action','plantsOrScales','plantsHarvested','expected','wastePct','pots','plantsPerPot','location','stepStatus','note'];
+  const esc=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+  const lines=[H.join(';')];
+  for(const e of edits){
+    lines.push([esc(e.timestamp),esc(e.batchCode),esc(e.variety),esc(e.action),
+      e.plantsOrScales===''?'':String(e.plantsOrScales),
+      e.plantsHarvested===''?'':String(e.plantsHarvested),
+      e.expected===''?'':String(e.expected),
+      esc(e.wastePct||''),
+      e.pots===''?'':String(e.pots),
+      e.plantsPerPot===''?'':String(e.plantsPerPot),
+      esc(e.location||''),esc(e.stepStatus||''),esc(e.note||'')].join(';'));
+  }
+  return lines.join('\r\n')+'\r\n';
+}
+function stampNow(){const n=new Date();return ''+n.getFullYear()+pad(n.getMonth()+1)+pad(n.getDate())+'_'+pad(n.getHours())+pad(n.getMinutes())+pad(n.getSeconds());}
+
+async function exportPackage(){
+  const items=(await DB.all('pending')).sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
+  const edits=(await DB.all('batchedits')).sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
+  if(!items.length&&!edits.length){toast('Nothing to export');return;}
+  $('#btnExport').disabled=true;toast('Building export package…');
+  try{
+    const stamp=stampNow();
+    const outFiles=[]; // {name, blob}
+    const photoFiles=[]; // {name,data}
+    if(items.length){
+      outFiles.push({name:'inspections_'+stamp+'.csv',blob:new Blob([buildCsv(items)],{type:'text/csv'})});
+      for(const it of items){let idx=1;for(const key of (it.photos||[])){const blob=await DB.get('photos',key);if(blob)photoFiles.push({name:photoFileName(it,idx),data:new Uint8Array(await blob.arrayBuffer())});idx++;}}
+    }
+    if(edits.length){outFiles.push({name:'batch_edits_'+stamp+'.csv',blob:new Blob([buildBatchEditsCsv(edits)],{type:'text/csv'})});}
+
+    // Path A: direct write to a connected folder (desktop, File System Access)
+    let delivered=false, mode='';
+    const dir=await getExportDir();
+    if(dir){
+      try{
+        for(const f of outFiles){await writeFileToDir(dir,f.name,f.blob);}
+        if(photoFiles.length){const pdir=await dir.getDirectoryHandle('photos',{create:true});for(const p of photoFiles){await writeFileToDir(pdir,p.name,new Blob([p.data],{type:'image/jpeg'}));}}
+        delivered=true;mode='folder';
+      }catch(e){console.warn('Direct folder write failed, falling back',e);}
+    }
+    // Path B: Web Share / download (phone or no folder)
+    if(!delivered){
+      const zip=photoFiles.length?{name:'photos_'+stamp+'.zip',blob:makeZip(photoFiles)}:null;
+      const shareFiles=outFiles.map(f=>new File([f.blob],f.name,{type:'text/csv'}));
+      if(zip)shareFiles.push(new File([zip.blob],zip.name,{type:'application/zip'}));
+      let shared=false;
+      if(navigator.canShare&&navigator.canShare({files:shareFiles})){
+        try{await navigator.share({files:shareFiles,title:'AER export',text:'AER inspection and batch data'});shared=true;mode='share';}
+        catch(e){if(e&&e.name==='AbortError'){$('#btnExport').disabled=false;return;}}
+      }
+      if(!shared){for(const f of outFiles)downloadBlob(f.blob,f.name);if(zip)downloadBlob(zip.blob,zip.name);mode='download';}
+      delivered=true;
+    }
+    const where=mode==='folder'?('saved to folder "'+(dir.name||'')+'"'):(mode==='share'?'shared':'downloaded');
+    const ok=confirm('Export '+where+':\n'+items.length+' inspection(s), '+edits.length+' batch change(s), '+photoFiles.length+' photos.\n\nClear the queue now?\n\nOK = clear · Cancel = keep');
+    if(ok){
+      for(const it of items){for(const k of (it.photos||[]))await DB.del('photos',k);await DB.del('pending',it.id);}
+      for(const e of edits)await DB.del('batchedits',e.id);
+      toast('Queue cleared');
+    } else toast('Queue kept');
+    refreshHome();
+  }catch(e){toast('Export failed: '+e.message);}
+  $('#btnExport').disabled=false;
+}
+
+/* ---- File System Access: optional direct-to-folder export (desktop) ---- */
+const FSA_SUPPORTED=('showDirectoryPicker' in window);
+async function connectExportDir(){
+  if(!FSA_SUPPORTED){toast('Desktop Chrome/Edge only');return;}
+  try{
+    const h=await window.showDirectoryPicker({mode:'readwrite',id:'aer-export'});
+    await DB.set('kv','exportDir',h);
+    toast('Export folder connected: '+h.name);buildSettings();
+  }catch(e){if(e&&e.name!=='AbortError')toast('Could not connect folder');}
+}
+async function getExportDir(){
+  if(!FSA_SUPPORTED)return null;
+  const h=await DB.get('kv','exportDir');if(!h)return null;
+  try{
+    let p=await h.queryPermission({mode:'readwrite'});
+    if(p!=='granted')p=await h.requestPermission({mode:'readwrite'});
+    if(p!=='granted')return null;
+    return h;
+  }catch(e){return null;}
+}
+async function forgetExportDir(){await DB.del('kv','exportDir');toast('Export folder disconnected');buildSettings();}
+async function writeFileToDir(dir,name,blob){const fh=await dir.getFileHandle(name,{create:true});const w=await fh.createWritable();await w.write(blob);await w.close();}
+function downloadBlob(blob,name){const a=el('a',{href:URL.createObjectURL(blob),download:name});document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
+
+/* ---- minimal store-only ZIP (no compression; JPEGs already compressed) ---- */
+const CRC_TABLE=(function(){const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
+function crc32(buf){let c=0xFFFFFFFF;for(let i=0;i<buf.length;i++)c=CRC_TABLE[(c^buf[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function makeZip(files){
+  const enc=new TextEncoder();const chunks=[];const central=[];let offset=0;
+  const u16=v=>[v&0xFF,(v>>8)&0xFF];const u32=v=>[v&0xFF,(v>>8)&0xFF,(v>>16)&0xFF,(v>>24)&0xFF];
+  for(const f of files){
+    const nameBytes=enc.encode(f.name);const data=f.data;const crc=crc32(data);
+    const local=[].concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0));
+    chunks.push(new Uint8Array(local));chunks.push(nameBytes);chunks.push(data);
+    const cen=[].concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset));
+    central.push(new Uint8Array(cen));central.push(nameBytes);
+    offset+=local.length+nameBytes.length+data.length;
+  }
+  const centralStart=offset;let centralSize=0;central.forEach(c=>centralSize+=c.length);
+  const end=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(centralSize),u32(centralStart),u16(0)));
+  return new Blob([...chunks,...central,end],{type:'application/zip'});
+}
+
+/* ================================================================
+   Settings screen
+   ================================================================ */
+async function buildSettings(){
+  $$('#fontSeg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.font)-SETTINGS.fontFrac)<0.001));
+  $$('#qualSeg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.qual)-SETTINGS.quality)<0.001));
+  const wm=$('#wmFields');wm.innerHTML='';
+  WATERMARK_FIELDS.forEach(f=>{
+    const t=el('div',{className:'toggle'});
+    const sw=el('label',{className:'switch'});const cb=el('input',{type:'checkbox',checked:SETTINGS.wm.includes(f[0])});
+    cb.onchange=()=>{const s=new Set(SETTINGS.wm);cb.checked?s.add(f[0]):s.delete(f[0]);SETTINGS.wm=WATERMARK_FIELDS.map(x=>x[0]).filter(id=>s.has(id));saveSettings();};
+    sw.append(cb,el('span',{className:'slider'}));
+    t.append(el('div',{textContent:f[1]}),sw);wm.append(t);
+  });
+  const leaf=$('#setLeaf');leaf.innerHTML='';LEAF_COLORS.forEach(c=>leaf.append(el('option',{value:c,textContent:c})));leaf.value=SETTINGS.leaf;
+  leaf.onchange=()=>{SETTINGS.leaf=leaf.value;saveSettings();};
+  $('#setWarn').value=SETTINGS.warn;
+  // export dir status
+  const ds=$('#exportDirStatus');
+  if(!FSA_SUPPORTED){ds.textContent='Not supported on this device (desktop Chrome/Edge only).';$('#btnConnectDir').style.display='none';$('#btnForgetDir').style.display='none';}
+  else{const h=await DB.get('kv','exportDir');if(h){ds.textContent='Connected: '+h.name;$('#btnForgetDir').style.display='';}else{ds.textContent='No folder connected yet — export uses share/download.';$('#btnForgetDir').style.display='none';}}
+}
+$('#btnConnectDir').onclick=connectExportDir;
+$('#btnForgetDir').onclick=forgetExportDir;
+$$('#fontSeg button').forEach(b=>b.onclick=()=>{SETTINGS.fontFrac=parseFloat(b.dataset.font);saveSettings();buildSettings();});
+$$('#qualSeg button').forEach(b=>b.onclick=()=>{SETTINGS.quality=parseFloat(b.dataset.qual);saveSettings();buildSettings();});
+$('#setWarn').onchange=()=>{SETTINGS.warn=Math.max(10,Math.min(500,parseInt($('#setWarn').value)||90));saveSettings();refreshHome();};
+
+/* ================================================================
+   Boot
+   ================================================================ */
+(async function boot(){
+  try{await DB.open();await loadSettings();await loadBatchesFromStore();}
+  catch(e){console.error(e);toast('Storage error: '+e.message);}
+  if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
+  refreshHome();show('home',false);
+})();
+</script>
+</body>
+</html>
