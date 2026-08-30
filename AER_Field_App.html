@@ -177,16 +177,11 @@
         <div class="s muted" id="beMeta"></div>
       </div>
 
-      <h2 class="section">Plant count</h2>
+      <h2 class="section">Harvest / handover</h2>
       <div class="card">
-        <label>Count type</label>
-        <div class="seg" id="beKind">
-          <button data-kind="count" class="on">Interim count</button>
-          <button data-kind="harvest">Final harvest / handover</button>
-        </div>
-        <div class="s muted" id="beKindHint" style="margin-top:6px">Interim count = corrects the current number of plants still growing.</div>
+        <div class="s muted" id="beKindHint" style="margin-top:6px">Records the harvested/handed-over number and computes waste vs expected. To change the number still growing, update Pots and Plants/pot below — the total is Pots × Plants/pot.</div>
         <div class="spacer"></div>
-        <label id="beCountLabel">New plant count (still growing)</label>
+        <label id="beCountLabel">Number harvested / handed over</label>
         <input id="beCount" inputmode="numeric" placeholder="e.g. 3400">
         <div class="spacer"></div>
         <div class="row" style="gap:10px">
@@ -204,6 +199,7 @@
           <div style="flex:1"><label>Pots</label><input id="bePots" inputmode="numeric" placeholder="—"></div>
           <div style="flex:1"><label>Plants / pot</label><input id="bePPP" inputmode="numeric" placeholder="—"></div>
         </div>
+        <div class="s muted" id="bePlantsCalc" style="margin-top:6px">Plants (calculated) = Pots × Plants/pot: —</div>
       </div>
 
       <h2 class="section">Step status</h2>
@@ -354,7 +350,7 @@
       <h2 class="section">About</h2>
       <div class="card muted" style="font-size:13px">
         <b>Version <span id="verLabel2"></span></b><br><br>
-        AER Field App — Phase 1 + 2. Records inspections and photos (like qc_app3) and batch changes (count, location, pots, step status). Exports inspections as CSV + photos, and batch changes as a separate batch_edits CSV (ready for the Phase 3 sync into AER_Data.xlsx). The inspection CSV format is unchanged, so your existing OneDrive import keeps working.<br><br>
+        AER Field App — Phase 1 + 2. Records inspections and photos (like qc_app3) and batch changes (harvest, location, pots, plants/pot, step status). Exports inspections as CSV + photos, and batch changes as a separate batch_edits CSV (ready for the Phase 3 sync into AER_Data.xlsx). The inspection CSV format is unchanged, so your existing OneDrive import keeps working.<br><br>
         Tip: open this file in Chrome and choose "Add to home screen" to use it as an app (works offline).
       </div>
     </section>
@@ -411,12 +407,24 @@
   </div>
 </div>
 
+<!-- Refresh gate -->
+<div class="modal" id="refreshGate">
+  <div class="box">
+    <h3 id="rgTitle">Update batch list</h3>
+    <div id="rgBody" class="muted" style="font-size:14px"></div>
+    <div class="row" style="margin-top:16px;gap:10px">
+      <button class="btn ghost" id="rgUseCached">Use current</button>
+      <button class="btn" id="rgLoad">🔄 Load latest</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-08-30 · r8';
+const APP_VERSION='2026-08-30 · r11';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -483,7 +491,7 @@ async function loadSettings(){const s=await DB.get('kv','settings');if(s)SETTING
 async function saveSettings(){await DB.set('kv','settings',SETTINGS);}
 
 /* ---------- Batches CSV ---------- */
-let BATCHES={headers:[],rows:[],name:'',index:new Map()};
+let BATCHES={headers:[],rows:[],name:'',index:new Map(),loadedAt:''};
 let PROTOCOL={byStep:new Map()};
 const K_BATCH=['Batch_Number','Batch Number','BatchNumber','Batch','Code'];
 const K_CLIENT=['Client_Name','Client Name','Customer Name','Client','Customer'];
@@ -548,7 +556,7 @@ function unitsPerCrateFor(row){
 }
 async function loadBatchesFromStore(){
   const saved=await DB.get('kv','batchesData');
-  if(saved&&saved.rows){BATCHES.headers=saved.headers||[];BATCHES.rows=saved.rows;BATCHES.name=saved.name||'';indexBatches();indexProtocol(saved.steps);return;}
+  if(saved&&saved.rows){BATCHES.headers=saved.headers||[];BATCHES.rows=saved.rows;BATCHES.name=saved.name||'';BATCHES.loadedAt=saved.loadedAt||'';indexBatches();indexProtocol(saved.steps);return;}
   const old=await DB.get('kv','batchesCsv');
   if(old&&old.text){const p=parseCSV(old.text);BATCHES.headers=p.headers;BATCHES.rows=p.rows;BATCHES.name=old.name||'';indexBatches();}
 }
@@ -578,7 +586,8 @@ async function pickBatchesFile(file){
   }catch(e){toast('Could not read file: '+e.message);return false;}
   if(!rows.length){toast('No rows found');return false;}
   BATCHES.headers=headers;BATCHES.rows=rows;BATCHES.name=file.name;indexBatches();indexProtocol(steps);
-  await DB.set('kv','batchesData',{rows,headers,name:file.name,steps});
+  BATCHES.loadedAt=new Date().toISOString();
+  await DB.set('kv','batchesData',{rows,headers,name:file.name,steps,loadedAt:BATCHES.loadedAt});
   return true;
 }
 
@@ -608,12 +617,13 @@ $('#backBtn').onclick=back;
 $('#settingsBtn').onclick=()=>{buildSettings();show('settings');};
 
 /* ---- Back-gesture / Back-button controller ---- */
-function anyOverlayOpen(){return $('#photoViewer').classList.contains('on')||$('#camWrap').classList.contains('on')||$('#scanWrap').classList.contains('on')||$('#reviewModal').classList.contains('on');}
+function anyOverlayOpen(){return $('#photoViewer').classList.contains('on')||$('#camWrap').classList.contains('on')||$('#scanWrap').classList.contains('on')||$('#reviewModal').classList.contains('on')||$('#refreshGate').classList.contains('on');}
 function closeTopOverlay(){
   if($('#photoViewer').classList.contains('on')){pvClose();return true;}
   if($('#camWrap').classList.contains('on')){closeCam();return true;}
   if($('#scanWrap').classList.contains('on')){stopScan();return true;}
   if($('#reviewModal').classList.contains('on')){$('#reviewModal').classList.remove('on');return true;}
+  if($('#refreshGate').classList.contains('on') && BATCHES.rows.length){$('#refreshGate').classList.remove('on');return true;}
   return false;
 }
 function hasUnsavedInspection(){return stack[stack.length-1]==='insp' && !!(insp && insp.photos && insp.photos.length>0);}
@@ -635,7 +645,10 @@ window.addEventListener('beforeunload',e=>{if(hasUnsavedInspection()){e.preventD
    Home
    ================================================================ */
 async function refreshHome(){
-  $('#csvStatus').textContent=BATCHES.rows.length?(BATCHES.name+' — '+BATCHES.rows.length+' batches'):'Not loaded yet';
+  if(BATCHES.rows.length){let s=BATCHES.name+' — '+BATCHES.rows.length+' batches';
+    if(BATCHES.loadedAt){const days=Math.floor((Date.now()-new Date(BATCHES.loadedAt))/86400000);s+=' · loaded '+(days<=0?'today':days+'d ago')+(days>=7?' — reload for latest':'');}
+    $('#csvStatus').textContent=s;}
+  else $('#csvStatus').textContent='Not loaded yet';
   $('#csvCard').querySelector('.s').className='s '+(BATCHES.rows.length?'':'muted');
   const pend=await DB.all('pending');
   const edits=await DB.all('batchedits');
@@ -651,6 +664,22 @@ async function refreshHome(){
   else warn.innerHTML='';
 }
 $('#btnPickCsv').onclick=()=>pickFile('.csv,.xlsx,.xlsm,text/csv',async f=>{if(await pickBatchesFile(f)){toast('Batches loaded');refreshHome();}});
+
+/* Refresh gate: prompt to reload the batch list on open when missing or >8h old */
+const BATCH_STALE_HOURS=8;
+function batchAgeHours(){return BATCHES.loadedAt?((Date.now()-new Date(BATCHES.loadedAt))/3600000):Infinity;}
+function maybeShowRefreshGate(){
+  const has=BATCHES.rows.length>0;const age=batchAgeHours();
+  if(has && age<=BATCH_STALE_HOURS)return;
+  $('#rgTitle').textContent=has?'Batch list may be out of date':'Load the batch list';
+  $('#rgBody').innerHTML=has
+    ?('Loaded '+(isFinite(age)?Math.round(age)+' h ago':'a while ago')+'. Load the latest <b>AER_Data.xlsx</b> so scans and current-step info are up to date.')
+    :'Pick <b>AER_Data.xlsx</b> (or a batches CSV) so the app knows your batches.';
+  $('#rgUseCached').style.display=has?'':'none';
+  $('#refreshGate').classList.add('on');
+}
+$('#rgUseCached').onclick=()=>$('#refreshGate').classList.remove('on');
+$('#rgLoad').onclick=()=>pickFile('.csv,.xlsx,.xlsm,text/csv',async f=>{if(await pickBatchesFile(f)){$('#refreshGate').classList.remove('on');toast('Batch list updated');refreshHome();}});
 $('#btnScan').onclick=startScan;
 $('#btnManual').onclick=()=>openInspection({batchCode:'',variety:'',row:null});
 $('#btnBrowse').onclick=()=>{if(!BATCHES.rows.length){toast('Load a batch file first');return;}buildBrowse();show('browse');};
@@ -756,15 +785,15 @@ function openBatchInfo(code,res){
 }
 function kvEl(k,v){const d=el('div',{className:'kv'});d.append(el('b',{textContent:k}),el('span',{textContent:v}));return d;}
 $('#btnStartInspection').onclick=()=>openInspection({batchCode:currentBatch.code,variety:currentBatch.variety,row:currentBatch.row,stepCode:currentBatch.stepCode});
-$('#btnEditBatch').onclick=()=>openBatchEdit(currentBatch.stepCode||currentBatch.code,currentBatch.row,currentBatch.variety);
+$('#btnEditBatch').onclick=()=>openBatchEdit(currentBatch.code,currentBatch.row,currentBatch.variety);
 
 /* ================================================================
    Batch edit (Fase 2) — capture & propose batch mutations
    ================================================================ */
-let batchEdit={code:'',row:null,variety:'',kind:'count',step:''};
+let batchEdit={code:'',row:null,variety:'',kind:'harvest',step:''};
 function openBatchEdit(code,row,variety,prefill){
   row=row||BATCHES.index.get(code)||null;
-  batchEdit={code:code||'',row,variety:variety||fieldFrom(row,K_VARIETY),kind:'count',step:''};
+  batchEdit={code:code||'',row,variety:variety||fieldFrom(row,K_VARIETY),kind:'harvest',step:''};
   $('#beTitle').textContent='Update batch — '+(code||'-');
   $('#beMeta').textContent=[batchEdit.variety,fieldFrom(row,K_CLIENT)].filter(Boolean).join(' · ')||(row?'':'(not in file — recorded anyway)');
   $('#beCount').value=(prefill&&prefill.count!=null)?prefill.count:'';
@@ -773,12 +802,12 @@ function openBatchEdit(code,row,variety,prefill){
   $('#bePots').value=fieldFrom(row,['Pots'])||'';
   $('#bePPP').value=fieldFrom(row,['Plants Per Pot','Plants_Per_Pot'])||'';
   $('#beNote').value='';$('#beWaste').value='';
-  setBeKind((prefill&&prefill.kind)||'count');setBeStep('');
+  setBeKind((prefill&&prefill.kind)||'harvest');setBeStep('');recalcPlants();
   show('batchedit');
 }
 function setBeKind(k){batchEdit.kind=k;$$('#beKind button').forEach(b=>b.classList.toggle('on',b.dataset.kind===k));
   $('#beCountLabel').textContent=(k==='harvest')?'Number harvested / handed over':'New plant count (still growing)';
-  $('#beKindHint').textContent=(k==='harvest')?'Final harvest = records the harvested/handed-over number and computes waste vs expected.':'Interim count = corrects the current number of plants still growing.';
+  $('#beKindHint').textContent=(k==='harvest')?'Records the harvested/handed-over number and computes waste vs expected. To change the number still growing, update Pots and Plants/pot below — the total is Pots × Plants/pot.':'Interim count = corrects the current number of plants still growing.';
   recalcWaste();}
 $$('#beKind button').forEach(b=>b.onclick=()=>setBeKind(b.dataset.kind));
 function setBeStep(s){batchEdit.step=s;$$('#beStep button').forEach(b=>b.classList.toggle('on',b.dataset.step===s));}
@@ -787,6 +816,8 @@ function recalcWaste(){const exp=toNum($('#beExpected').value),n=toNum($('#beCou
   if(batchEdit.kind==='harvest'&&exp>0&&$('#beCount').value.trim()!==''){$('#beWaste').value=Math.max(0,(exp-n)/exp*100).toFixed(1)+'%';}
   else $('#beWaste').value='';}
 $('#beCount').oninput=recalcWaste;$('#beExpected').oninput=recalcWaste;
+function recalcPlants(){const pots=toNum($('#bePots').value),ppp=Math.floor(toNum($('#bePPP').value));const ok=pots>0&&ppp>0;const elc=$('#bePlantsCalc');if(elc)elc.textContent='Plants (calculated) = Pots × Plants/pot: '+(ok?(ppp*pots):'—');}
+$('#bePots').oninput=recalcPlants;$('#bePPP').oninput=recalcPlants;
 $('#beSave').onclick=async()=>{
   const count=$('#beCount').value.trim(),location=$('#beLocation').value.trim();
   const pots=$('#bePots').value.trim(),ppp=$('#bePPP').value.trim(),step=batchEdit.step,note=$('#beNote').value.trim();
@@ -794,7 +825,7 @@ $('#beSave').onclick=async()=>{
   if(!batchEdit.code){toast('No batch code');return;}
   if(count===''&&location===''&&pots===''&&ppp===''&&!step&&!note){toast('Nothing filled in to save');return;}
   const acts=[];
-  if(count!=='')acts.push(batchEdit.kind==='harvest'?'harvest':'count_update');
+  if(count!=='')acts.push('harvest');
   if(location!=='')acts.push('location');
   if(pots!==''||ppp!=='')acts.push('pots');
   if(step)acts.push('step');
@@ -803,7 +834,7 @@ $('#beSave').onclick=async()=>{
     timestamp:new Date().toISOString(),
     batchCode:batchEdit.code, variety:batchEdit.variety||'',
     action:acts.join('+')||'note',
-    plantsOrScales:(count!==''&&batchEdit.kind==='count')?toNum(count):'',
+    plantsOrScales:'',
     plantsHarvested:(count!==''&&batchEdit.kind==='harvest')?toNum(count):'',
     expected:exp!==''?toNum(exp):'',
     wastePct:($('#beWaste').value||'').replace('%',''),
@@ -883,7 +914,7 @@ function renderCountRows(){
 }
 function updateCountStat(){const xs=countCtrls.map(toNum);$('#countStat').textContent=countCtrls.length?('Mean: '+fmt(mean(xs))+'   SD: '+fmt(stdev(xs))):'Mean: —   SD: —';
   const h=$('#pppHint');if(!h)return;const n=countCtrls.length;
-  if(n>=3)h.textContent='✓ '+n+' pots counted → plants/pot will be set to '+Math.round(mean(xs))+' on save.';
+  if(n>=3)h.textContent='✓ '+n+' pots counted → plants/pot will be set to '+Math.floor(mean(xs))+' on save.';
   else h.textContent='Count at least '+(3-n)+' more pot'+((3-n)===1?'':'s')+' to auto-update plants/pot ('+n+'/3).';
 }
 
@@ -1145,9 +1176,9 @@ $('#reviewConfirm').onclick=async()=>{
   toast((insp.editId?'Inspection updated':'Inspection saved')+' · queue: '+pend.length);
   const counts=rec.counts||[];
   if(counts.length>=3 && rec.batchCode){
-    const ppp=Math.round(mean(counts));
+    const ppp=Math.floor(mean(counts));
     const be={id:'be_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),timestamp:new Date().toISOString(),
-      batchCode:(insp.stepCode||rec.batchCode),variety:rec.variety||'',action:'ppp_from_count',
+      batchCode:rec.batchCode,variety:rec.variety||'',action:'ppp_from_count',
       plantsOrScales:'',plantsHarvested:'',expected:'',wastePct:'',pots:'',plantsPerPot:ppp,location:'',stepStatus:'',
       note:'auto: '+counts.length+' pot counts (mean '+mean(counts).toFixed(1)+')'};
     await DB.set('batchedits',null,be);
@@ -1399,6 +1430,7 @@ $('#setWarn').onchange=()=>{SETTINGS.warn=Math.max(10,Math.min(500,parseInt($('#
   history.replaceState({s:'home',depth:1},'');
   refreshHome();show('home',false);
   setTimeout(()=>toast('AER Field App · v'+APP_VERSION),400);
+  setTimeout(maybeShowRefreshGate,700);
 })();
 </script>
 </body>
