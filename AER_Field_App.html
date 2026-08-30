@@ -151,7 +151,7 @@
           <button class="btn ghost sm" id="btnPending">View / edit</button>
         </div>
       </div>
-      <p class="muted" style="font-size:12px;text-align:center;margin-top:20px">AER Field App · Phase 1 + 2 · replaces qc_app3<br>Inspections + photos and batch changes (count · location · step)</p>
+      <p class="muted" style="font-size:12px;text-align:center;margin-top:20px">AER Field App · <span id="verLabel"></span><br>Inspections + photos and batch changes (count · location · step)</p>
     </section>
 
     <!-- ============ BATCH INFO ============ -->
@@ -353,6 +353,7 @@
       </div>
       <h2 class="section">About</h2>
       <div class="card muted" style="font-size:13px">
+        <b>Version <span id="verLabel2"></span></b><br><br>
         AER Field App — Phase 1 + 2. Records inspections and photos (like qc_app3) and batch changes (count, location, pots, step status). Exports inspections as CSV + photos, and batch changes as a separate batch_edits CSV (ready for the Phase 3 sync into AER_Data.xlsx). The inspection CSV format is unchanged, so your existing OneDrive import keeps working.<br><br>
         Tip: open this file in Chrome and choose "Add to home screen" to use it as an app (works offline).
       </div>
@@ -415,6 +416,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 "use strict";
+const APP_VERSION='2026-08-30 · r7';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -987,6 +989,17 @@ $$('.mic').forEach(b=>b.onclick=()=>{
    Camera + watermark (photo)
    ================================================================ */
 let camStream=null;
+// Track physical device tilt so we can keep the info bar at the visual bottom
+// even when the screen doesn't rotate (auto-rotate off, or a locked PWA manifest).
+let lastGamma=0,gammaSeen=false;
+window.addEventListener('deviceorientation',e=>{if(e&&e.gamma!=null){lastGamma=e.gamma;gammaSeen=true;}},true);
+function captureRotation(){
+  // Degrees to rotate the raw frame so the saved photo is upright with the bar at the bottom.
+  const ang=(window.screen&&screen.orientation&&typeof screen.orientation.angle==='number')?screen.orientation.angle:(window.orientation||0);
+  if(ang!==0)return 0; // browser already delivers an oriented (landscape) frame → nothing to do
+  if(gammaSeen&&Math.abs(lastGamma)>35)return lastGamma>0?90:-90; // screen stayed portrait but phone is physically landscape
+  return 0;
+}
 async function openPhotoCam(){
   if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast(cameraBlockedMsg());return;}
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:3000},height:{ideal:4000}}});}
@@ -1000,10 +1013,13 @@ $('#camShutter').onclick=async(ev)=>{
   if(ev){ev.preventDefault();ev.stopPropagation();}
   if(_capturing)return;_capturing=true;
   try{
-    const v=$('#camVideo');const w=v.videoWidth,h=v.videoHeight;if(!w){toast('Camera not ready yet');return;}
-    const cv=el('canvas');cv.width=w;cv.height=h;const ctx=cv.getContext('2d');
-    ctx.drawImage(v,0,0,w,h);
-    drawWatermark(ctx,w,h);
+    const v=$('#camVideo');const vw=v.videoWidth,vh=v.videoHeight;if(!vw){toast('Camera not ready yet');return;}
+    const rot=captureRotation();
+    let ow=vw,oh=vh;if(rot===90||rot===-90){ow=vh;oh=vw;}
+    const cv=el('canvas');cv.width=ow;cv.height=oh;const ctx=cv.getContext('2d');
+    if(rot){ctx.save();ctx.translate(ow/2,oh/2);ctx.rotate(rot*Math.PI/180);ctx.drawImage(v,-vw/2,-vh/2,vw,vh);ctx.restore();}
+    else ctx.drawImage(v,0,0,vw,vh);
+    drawWatermark(ctx,ow,oh);
     const quality=SETTINGS.quality||0.9;
     const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',quality));
     const thumb=makeThumb(cv);
@@ -1330,6 +1346,7 @@ function makeZip(files){
    Settings screen
    ================================================================ */
 async function buildSettings(){
+  const v2=$('#verLabel2');if(v2)v2.textContent='v'+APP_VERSION;
   $$('#fontSeg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.font)-SETTINGS.fontFrac)<0.001));
   $$('#qualSeg button').forEach(b=>b.classList.toggle('on',Math.abs(parseFloat(b.dataset.qual)-SETTINGS.quality)<0.001));
   const wm=$('#wmFields');wm.innerHTML='';
@@ -1363,8 +1380,10 @@ $('#setWarn').onchange=()=>{SETTINGS.warn=Math.max(10,Math.min(500,parseInt($('#
   try{await DB.open();await loadSettings();await loadBatchesFromStore();}
   catch(e){console.error(e);toast('Storage error: '+e.message);}
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
+  const vl=$('#verLabel');if(vl)vl.textContent='v'+APP_VERSION;
   history.replaceState({s:'home',depth:1},'');
   refreshHome();show('home',false);
+  setTimeout(()=>toast('AER Field App · v'+APP_VERSION),400);
 })();
 </script>
 </body>

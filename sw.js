@@ -1,5 +1,5 @@
 /* AER Field App service worker — offline shell + cached SheetJS */
-const CACHE = 'aer-field-v4';
+const CACHE = 'aer-field-v5';
 const ASSETS = [
   'AER_Field_App.html',
   'manifest.webmanifest',
