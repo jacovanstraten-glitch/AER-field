@@ -5,7 +5,7 @@
   "start_url": "AER_Field_App.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#ffffff",
   "theme_color": "#00554B",
   "icons": [

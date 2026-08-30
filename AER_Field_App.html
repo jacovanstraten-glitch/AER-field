@@ -329,6 +329,14 @@
       <div class="card" id="wmFields"></div>
       <h2 class="section">Default leaf colour</h2>
       <div class="card"><select id="setLeaf"></select></div>
+      <h2 class="section">Speech language</h2>
+      <div class="card">
+        <div class="seg" id="speechSeg">
+          <button data-lang="en-US">English</button>
+          <button data-lang="nl-NL">Nederlands</button>
+        </div>
+        <div class="s muted" style="margin-top:6px">Used by the 🎤 dictation on the notes fields.</div>
+      </div>
       <h2 class="section">Queue warning</h2>
       <div class="card">
         <label>Warn at photo count ≥</label>
@@ -341,7 +349,7 @@
           <button class="btn secondary sm" id="btnConnectDir">Connect folder</button>
           <button class="btn ghost sm" id="btnForgetDir" style="display:none">Disconnect</button>
         </div>
-        <div class="s muted" style="margin-top:8px">On desktop the export writes the CSVs + loose photos straight into this OneDrive folder — no sharing or unzipping. On the phone it shares/downloads.</div>
+        <div class="s muted" style="margin-top:8px">Desktop only. On desktop this writes the CSVs + loose photos straight into a OneDrive folder — no sharing or unzipping. On your phone, use <b>Export</b> on the home screen and pick OneDrive from the share menu (OneDrive can't be a direct folder target on Android).</div>
       </div>
       <h2 class="section">About</h2>
       <div class="card muted" style="font-size:13px">
@@ -464,7 +472,7 @@ const WATERMARK_FIELDS=[
   ['planning_id','Planning ID',false],['status','Status',false],
 ];
 const LEAF_COLORS=['Dark green','Green','Light green','Yellowing','Brown'];
-const DEFAULT_SETTINGS={fontFrac:0.025,quality:0.9,leaf:'Green',warn:90,
+const DEFAULT_SETTINGS={fontFrac:0.025,quality:0.9,leaf:'Green',warn:90,speechLang:'en-US',
   wm:WATERMARK_FIELDS.filter(f=>f[2]).map(f=>f[0])};
 const FONT_MIGRATE={0.030:0.018,0.045:0.025,0.060:0.035,0.080:0.050}; // old overlay sizes → new smaller scale
 let SETTINGS=Object.assign({},DEFAULT_SETTINGS);
@@ -949,19 +957,30 @@ $('#pvDelete').onclick=async()=>{
   stage.addEventListener('pointerup',up);stage.addEventListener('pointercancel',up);
 })();
 
-/* ---------- Speech to text (optional) ---------- */
-let recog=null,recogTarget=null;
-function initSpeech(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return null;const r=new SR();r.lang='nl-NL';r.interimResults=true;r.continuous=false;return r;}
-$$('.mic').forEach(b=>b.onclick=()=>{
+/* ---------- Speech to text — continuous, keeps listening until stopped ---------- */
+let recog=null,recogBtn=null;
+function stopSpeech(){if(recog){recog._active=false;try{recog.stop();}catch(e){}}if(recogBtn){recogBtn.textContent='🎤';recogBtn=null;}}
+function startSpeech(ta,btn){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){toast('Speech recognition not available on this device');return;}
-  const targetId=b.dataset.mic;const ta=$('#'+targetId);
-  if(recog){try{recog.stop();}catch(e){}recog=null;b.textContent='🎤';return;}
-  recog=new SR();recog.lang='nl-NL';recog.interimResults=true;const base=ta.value;
-  recog.onresult=(ev)=>{let s='';for(const r of ev.results)s+=r[0].transcript;ta.value=(base?base+' ':'')+s;};
-  recog.onend=()=>{recog=null;b.textContent='🎤';};
-  recog.onerror=()=>{recog=null;b.textContent='🎤';};
-  b.textContent='⏺';recog.start();
+  recog=new SR();recog.lang=SETTINGS.speechLang||'en-US';recog.interimResults=true;recog.continuous=true;
+  let committed=ta.value?ta.value.trim()+' ':'';
+  recog.onresult=(ev)=>{
+    let interim='';
+    for(let i=ev.resultIndex;i<ev.results.length;i++){const r=ev.results[i];
+      if(r.isFinal)committed+=r[0].transcript.trim()+' ';else interim+=r[0].transcript;}
+    ta.value=(committed+interim).replace(/\s+/g,' ');
+  };
+  recog.onerror=(e)=>{if(e&&(e.error==='not-allowed'||e.error==='service-not-allowed')){toast('Microphone permission needed');stopSpeech();}};
+  recog.onend=()=>{ if(recog&&recog._active){try{recog.start();}catch(e){}} else {recog=null;if(recogBtn){recogBtn.textContent='🎤';recogBtn=null;}} };
+  recog._active=true;recogBtn=btn;btn.textContent='⏹';
+  try{recog.start();}catch(e){}
+}
+$$('.mic').forEach(b=>b.onclick=()=>{
+  const ta=$('#'+b.dataset.mic);
+  if(recog&&recog._active&&recogBtn===b){stopSpeech();return;}
+  if(recog&&recog._active)stopSpeech();
+  startSpeech(ta,b);
 });
 
 /* ================================================================
@@ -1257,7 +1276,8 @@ async function exportPackage(){
 }
 
 /* ---- File System Access: optional direct-to-folder export (desktop) ---- */
-const FSA_SUPPORTED=('showDirectoryPicker' in window);
+const IS_MOBILE=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');
+const FSA_SUPPORTED=('showDirectoryPicker' in window) && !IS_MOBILE;
 async function connectExportDir(){
   if(!FSA_SUPPORTED){toast('Desktop Chrome/Edge only');return;}
   try{
@@ -1283,14 +1303,21 @@ function downloadBlob(blob,name){const a=el('a',{href:URL.createObjectURL(blob),
 /* ---- minimal store-only ZIP (no compression; JPEGs already compressed) ---- */
 const CRC_TABLE=(function(){const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
 function crc32(buf){let c=0xFFFFFFFF;for(let i=0;i<buf.length;i++)c=CRC_TABLE[(c^buf[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function dosDateTime(d){
+  const time=((d.getHours()&0x1f)<<11)|((d.getMinutes()&0x3f)<<5)|((Math.floor(d.getSeconds()/2))&0x1f);
+  const year=Math.max(1980,d.getFullYear());
+  const date=(((year-1980)&0x7f)<<9)|(((d.getMonth()+1)&0x0f)<<5)|(d.getDate()&0x1f);
+  return {time,date};
+}
 function makeZip(files){
   const enc=new TextEncoder();const chunks=[];const central=[];let offset=0;
   const u16=v=>[v&0xFF,(v>>8)&0xFF];const u32=v=>[v&0xFF,(v>>8)&0xFF,(v>>16)&0xFF,(v>>24)&0xFF];
+  const {time:dtime,date:ddate}=dosDateTime(new Date());
   for(const f of files){
     const nameBytes=enc.encode(f.name);const data=f.data;const crc=crc32(data);
-    const local=[].concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0));
+    const local=[].concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(dtime),u16(ddate),u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0));
     chunks.push(new Uint8Array(local));chunks.push(nameBytes);chunks.push(data);
-    const cen=[].concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset));
+    const cen=[].concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(dtime),u16(ddate),u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset));
     central.push(new Uint8Array(cen));central.push(nameBytes);
     offset+=local.length+nameBytes.length+data.length;
   }
@@ -1318,11 +1345,13 @@ async function buildSettings(){
   $('#setWarn').value=SETTINGS.warn;
   // export dir status
   const ds=$('#exportDirStatus');
-  if(!FSA_SUPPORTED){ds.textContent='Not supported on this device (desktop Chrome/Edge only).';$('#btnConnectDir').style.display='none';$('#btnForgetDir').style.display='none';}
+  $$('#speechSeg button').forEach(b=>b.classList.toggle('on',b.dataset.lang===(SETTINGS.speechLang||'en-US')));
+  if(!FSA_SUPPORTED){ds.textContent=IS_MOBILE?'On your phone, use Export (home screen) and pick OneDrive in the share menu.':'Not supported on this browser (desktop Chrome/Edge only).';$('#btnConnectDir').style.display='none';$('#btnForgetDir').style.display='none';}
   else{const h=await DB.get('kv','exportDir');if(h){ds.textContent='Connected: '+h.name;$('#btnForgetDir').style.display='';}else{ds.textContent='No folder connected yet — export uses share/download.';$('#btnForgetDir').style.display='none';}}
 }
 $('#btnConnectDir').onclick=connectExportDir;
 $('#btnForgetDir').onclick=forgetExportDir;
+$$('#speechSeg button').forEach(b=>b.onclick=()=>{SETTINGS.speechLang=b.dataset.lang;saveSettings();buildSettings();});
 $$('#fontSeg button').forEach(b=>b.onclick=()=>{SETTINGS.fontFrac=parseFloat(b.dataset.font);saveSettings();buildSettings();});
 $$('#qualSeg button').forEach(b=>b.onclick=()=>{SETTINGS.quality=parseFloat(b.dataset.qual);saveSettings();buildSettings();});
 $('#setWarn').onchange=()=>{SETTINGS.warn=Math.max(10,Math.min(500,parseInt($('#setWarn').value)||90));saveSettings();refreshHome();};
