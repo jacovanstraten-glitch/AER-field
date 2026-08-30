@@ -83,6 +83,16 @@
   .scan-frame{position:absolute;top:0;left:0;right:0;bottom:80px;display:flex;align-items:center;justify-content:center;pointer-events:none}
   .scan-frame .box{width:70vw;max-width:320px;height:70vw;max-height:320px;border:3px solid var(--yellow);border-radius:18px;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
   .scan-hint{position:absolute;bottom:96px;left:0;right:0;text-align:center;color:#fff;font-size:14px;text-shadow:0 1px 2px #000}
+  /* photo viewer */
+  #photoViewer{position:fixed;inset:0;background:#000;z-index:70;display:none;flex-direction:column}
+  #photoViewer.on{display:flex}
+  #photoViewer .pv-top{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top))}
+  #pvCount{color:#fff;font-size:14px;font-weight:600}
+  #pvStage{flex:1;overflow:hidden;position:relative;touch-action:none;display:flex;align-items:center;justify-content:center}
+  #pvImg{max-width:100%;max-height:100%;transform-origin:center center;will-change:transform;user-select:none;-webkit-user-drag:none}
+  #photoViewer .pv-bar{display:flex;gap:8px;justify-content:center;align-items:center;padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:#000}
+  .pv-btn{background:rgba(255,255,255,.16);color:#fff;border:0;border-radius:10px;padding:11px 13px;font-size:14px;font-weight:600;cursor:pointer}
+  .pv-btn.danger{background:rgba(198,40,40,.9)}
   /* modal */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:none;align-items:center;justify-content:center;padding:16px}
   .modal.on{display:flex}
@@ -301,12 +311,12 @@
       <div class="card">
         <label>Text size on photo</label>
         <div class="seg" id="fontSeg">
-          <button data-font="0.030">Small</button>
-          <button data-font="0.045">Normal</button>
-          <button data-font="0.060">Large</button>
-          <button data-font="0.080">XL</button>
+          <button data-font="0.018">Small</button>
+          <button data-font="0.025">Normal</button>
+          <button data-font="0.035">Large</button>
+          <button data-font="0.050">XL</button>
         </div>
-        <div class="s muted" style="margin-top:6px">Larger = easier to read on the print. Default: Large.</div>
+        <div class="s muted" style="margin-top:6px">Size of the info text burned onto the photo. Default: Normal.</div>
         <div class="spacer"></div>
         <label>JPEG quality</label>
         <div class="seg" id="qualSeg">
@@ -347,6 +357,23 @@
   <button class="camclose" id="camClose">✕ Close</button>
   <video id="camVideo" autoplay playsinline muted></video>
   <div class="cambar"><button class="shutter" id="camShutter" aria-label="Foto"></button></div>
+</div>
+
+<!-- Photo viewer -->
+<div id="photoViewer">
+  <div class="pv-top">
+    <button class="pv-btn" id="pvClose">✕ Close</button>
+    <span id="pvCount"></span>
+    <button class="pv-btn danger" id="pvDelete">🗑 Delete</button>
+  </div>
+  <div id="pvStage"><img id="pvImg" alt=""></div>
+  <div class="pv-bar">
+    <button class="pv-btn" id="pvPrev">‹</button>
+    <button class="pv-btn" id="pvZoomOut">－</button>
+    <button class="pv-btn" id="pvReset">100%</button>
+    <button class="pv-btn" id="pvZoomIn">＋</button>
+    <button class="pv-btn" id="pvNext">›</button>
+  </div>
 </div>
 
 <!-- Scan overlay (QR) -->
@@ -392,6 +419,12 @@ const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const el = (t,props={},kids=[])=>{const e=document.createElement(t);Object.assign(e,props);for(const k of [].concat(kids))if(k!=null)e.append(k);return e;};
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2600);}
+// Absorb stray "ghost"/pass-through taps for a short window after a full-screen
+// overlay closes, so a lingering tap can't hit a button underneath (e.g. Review & Save).
+function tapShield(ms){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;z-index:99999;background:transparent';
+  const stop=e=>{e.preventDefault();e.stopPropagation();};
+  ['click','touchstart','touchend','mousedown','mouseup','pointerdown','pointerup'].forEach(ev=>d.addEventListener(ev,stop,true));
+  document.body.appendChild(d);setTimeout(()=>d.remove(),ms||700);}
 function pad(n,w=2){return String(n).padStart(w,'0');}
 function sanitize(s){return (s||'').replace(/[^A-Za-z0-9 _-]/g,'_').trim();}
 function toNum(s){const v=parseFloat(String(s==null?'':s).trim().replace(',','.'));return isNaN(v)?0:v;}
@@ -431,10 +464,12 @@ const WATERMARK_FIELDS=[
   ['planning_id','Planning ID',false],['status','Status',false],
 ];
 const LEAF_COLORS=['Dark green','Green','Light green','Yellowing','Brown'];
-const DEFAULT_SETTINGS={fontFrac:0.060,quality:0.9,leaf:'Green',warn:90,
+const DEFAULT_SETTINGS={fontFrac:0.025,quality:0.9,leaf:'Green',warn:90,
   wm:WATERMARK_FIELDS.filter(f=>f[2]).map(f=>f[0])};
+const FONT_MIGRATE={0.030:0.018,0.045:0.025,0.060:0.035,0.080:0.050}; // old overlay sizes → new smaller scale
 let SETTINGS=Object.assign({},DEFAULT_SETTINGS);
-async function loadSettings(){const s=await DB.get('kv','settings');if(s)SETTINGS=Object.assign({},DEFAULT_SETTINGS,s);}
+async function loadSettings(){const s=await DB.get('kv','settings');if(s)SETTINGS=Object.assign({},DEFAULT_SETTINGS,s);
+  if(FONT_MIGRATE[SETTINGS.fontFrac]!=null){SETTINGS.fontFrac=FONT_MIGRATE[SETTINGS.fontFrac];await saveSettings();}}
 async function saveSettings(){await DB.set('kv','settings',SETTINGS);}
 
 /* ---------- Batches CSV ---------- */
@@ -828,12 +863,62 @@ function renderPhotos(){
   const strip=$('#photoStrip');strip.innerHTML='';
   insp.photos.forEach((p,i)=>{
     const img=el('img',{className:'thumb',src:p.thumb});
-    img.onclick=()=>{if(confirm('Delete photo?')){insp.photos.splice(i,1);renderPhotos();}};
+    img.onclick=()=>openPhotoViewer(i);
     strip.append(img);
   });
   strip.append(el('div',{className:'addphoto',id:'btnAddPhoto',textContent:'＋',onclick:openPhotoCam}));
   $('#photoCount').textContent=insp.photos.length+' photo'+(insp.photos.length===1?'':'s');
 }
+
+/* ---------- Photo viewer: full-size, zoom/pan, delete ---------- */
+let PV={idx:0,scale:1,tx:0,ty:0,url:null,ptrs:new Map(),d0:0,s0:1,lastTap:0};
+function pvApply(){$('#pvImg').style.transform='translate('+PV.tx+'px,'+PV.ty+'px) scale('+PV.scale+')';const r=$('#pvReset');if(r)r.textContent=Math.round(PV.scale*100)+'%';}
+async function openPhotoViewer(i){
+  if(!insp.photos.length)return;
+  PV.idx=Math.max(0,Math.min(i,insp.photos.length-1));
+  $('#photoViewer').classList.add('on');
+  await pvLoad();
+}
+async function pvLoad(){
+  const p=insp.photos[PV.idx];if(!p){pvClose();return;}
+  if(PV.url){URL.revokeObjectURL(PV.url);PV.url=null;}
+  let src=p.thumb;
+  try{const blob=await DB.get('photos',p.key);if(blob){PV.url=URL.createObjectURL(blob);src=PV.url;}}catch(e){}
+  $('#pvImg').src=src||'';
+  PV.scale=1;PV.tx=0;PV.ty=0;pvApply();
+  $('#pvCount').textContent=(PV.idx+1)+' / '+insp.photos.length;
+}
+function pvClose(){$('#photoViewer').classList.remove('on');if(PV.url){URL.revokeObjectURL(PV.url);PV.url=null;}}
+function pvZoom(f){PV.scale=Math.max(1,Math.min(6,PV.scale*f));if(PV.scale===1){PV.tx=0;PV.ty=0;}pvApply();}
+$('#pvClose').onclick=pvClose;
+$('#pvZoomIn').onclick=()=>pvZoom(1.4);
+$('#pvZoomOut').onclick=()=>pvZoom(1/1.4);
+$('#pvReset').onclick=()=>{PV.scale=1;PV.tx=0;PV.ty=0;pvApply();};
+$('#pvPrev').onclick=async()=>{if(PV.idx>0){PV.idx--;await pvLoad();}};
+$('#pvNext').onclick=async()=>{if(PV.idx<insp.photos.length-1){PV.idx++;await pvLoad();}};
+$('#pvDelete').onclick=async()=>{
+  const p=insp.photos[PV.idx];if(!p)return;
+  if(!confirm('Delete this photo?'))return;
+  try{await DB.del('photos',p.key);}catch(e){}
+  insp.photos.splice(PV.idx,1);renderPhotos();
+  if(!insp.photos.length){pvClose();return;}
+  PV.idx=Math.min(PV.idx,insp.photos.length-1);await pvLoad();
+};
+(function(){const stage=$('#pvStage');if(!stage)return;
+  stage.addEventListener('pointerdown',e=>{try{stage.setPointerCapture(e.pointerId);}catch(_){}
+    PV.ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(PV.ptrs.size===2){const p=[...PV.ptrs.values()];PV.d0=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);PV.s0=PV.scale;}
+    else{const now=Date.now();if(now-PV.lastTap<300){PV.scale=PV.scale>1?1:2.5;PV.tx=0;PV.ty=0;pvApply();}PV.lastTap=now;}
+  });
+  stage.addEventListener('pointermove',e=>{if(!PV.ptrs.has(e.pointerId))return;
+    const prev=PV.ptrs.get(e.pointerId);const cur={x:e.clientX,y:e.clientY};PV.ptrs.set(e.pointerId,cur);
+    if(PV.ptrs.size===2){const p=[...PV.ptrs.values()];const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+      if(PV.d0>0){PV.scale=Math.max(1,Math.min(6,PV.s0*d/PV.d0));if(PV.scale===1){PV.tx=0;PV.ty=0;}pvApply();}}
+    else if(PV.scale>1){PV.tx+=cur.x-prev.x;PV.ty+=cur.y-prev.y;pvApply();}
+  });
+  const up=e=>{PV.ptrs.delete(e.pointerId);if(PV.ptrs.size<2)PV.d0=0;};
+  stage.addEventListener('pointerup',up);stage.addEventListener('pointercancel',up);
+})();
 
 /* ---------- Speech to text (optional) ---------- */
 let recog=null,recogTarget=null;
@@ -862,18 +947,24 @@ async function openPhotoCam(){
 }
 function closeCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}$('#camWrap').classList.remove('on');}
 $('#camClose').onclick=closeCam;
-$('#camShutter').onclick=async()=>{
-  const v=$('#camVideo');const w=v.videoWidth,h=v.videoHeight;if(!w){toast('Camera not ready yet');return;}
-  const cv=el('canvas');cv.width=w;cv.height=h;const ctx=cv.getContext('2d');
-  ctx.drawImage(v,0,0,w,h);
-  drawWatermark(ctx,w,h);
-  const quality=SETTINGS.quality||0.9;
-  const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',quality));
-  const thumb=makeThumb(cv);
-  const key='ph_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
-  await DB.set('photos',key,blob);
-  insp.photos.push({key,thumb});
-  closeCam();renderPhotos();toast('Photo added');
+let _capturing=false;
+$('#camShutter').onclick=async(ev)=>{
+  if(ev){ev.preventDefault();ev.stopPropagation();}
+  if(_capturing)return;_capturing=true;
+  try{
+    const v=$('#camVideo');const w=v.videoWidth,h=v.videoHeight;if(!w){toast('Camera not ready yet');return;}
+    const cv=el('canvas');cv.width=w;cv.height=h;const ctx=cv.getContext('2d');
+    ctx.drawImage(v,0,0,w,h);
+    drawWatermark(ctx,w,h);
+    const quality=SETTINGS.quality||0.9;
+    const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',quality));
+    const thumb=makeThumb(cv);
+    const key='ph_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    await DB.set('photos',key,blob);
+    insp.photos.push({key,thumb});
+    closeCam();tapShield(800);renderPhotos();toast('Photo added — take another or continue');
+  }catch(e){toast('Could not save photo: '+e.message);closeCam();}
+  finally{_capturing=false;}
 };
 function makeThumb(srcCanvas){const t=el('canvas');const s=Math.min(1,200/srcCanvas.width);t.width=srcCanvas.width*s;t.height=srcCanvas.height*s;t.getContext('2d').drawImage(srcCanvas,0,0,t.width,t.height);return t.toDataURL('image/jpeg',0.6);}
 
