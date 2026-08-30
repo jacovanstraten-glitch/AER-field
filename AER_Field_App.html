@@ -416,7 +416,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-08-30 · r7';
+const APP_VERSION='2026-08-30 · r8';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -704,21 +704,35 @@ function manualBatch(){
   const code=prompt('Batch code:');
   if(code&&code.trim())onBatchCode(code.trim());
 }
-function onBatchCode(code){
-  const row=BATCHES.index.get(code)||null;
-  openBatchInfo(code,row);
+// Resolve a scanned code to a specific step-row. Exact match wins; a step-less
+// (old-label) code resolves to the batch's CURRENT step (first not finished/skipped).
+function stepKey(code){const suf=String(code).split('-').pop();const m=suf.match(/^([A-Za-z]+)(\d*)$/);if(!m)return [999,0];let l=0;for(const ch of m[1].toUpperCase())l=l*26+(ch.charCodeAt(0)-64);return [l,m[2]?+m[2]:0];}
+function resolveBatchRow(code){
+  code=String(code||'').trim();
+  const exact=BATCHES.index.get(code);
+  if(exact)return {row:exact,stepCode:fieldFrom(exact,K_BATCH)||code,task:fieldFrom(exact,['Task']),exact:true};
+  const fam=BATCHES.rows.filter(r=>String(fieldFrom(r,K_BATCH)).startsWith(code+'-'));
+  if(!fam.length)return null;
+  fam.sort((a,b)=>{const ka=stepKey(fieldFrom(a,K_BATCH)),kb=stepKey(fieldFrom(b,K_BATCH));return ka[0]-kb[0]||ka[1]-kb[1];});
+  const fin=r=>String(fieldFrom(r,['Step Started'])).toLowerCase()==='yes'&&String(fieldFrom(r,['Step Finished'])).toLowerCase()==='yes';
+  const skip=r=>String(fieldFrom(r,['Step Skipped'])).toLowerCase()==='yes';
+  const cur=fam.find(r=>!fin(r)&&!skip(r))||fam[fam.length-1];
+  return {row:cur,stepCode:fieldFrom(cur,K_BATCH),task:fieldFrom(cur,['Task']),exact:false};
 }
+function onBatchCode(code){openBatchInfo(code,resolveBatchRow(code));}
 
 /* ================================================================
    Batch Info
    ================================================================ */
-let currentBatch={code:'',row:null,variety:''};
-function openBatchInfo(code,row){
-  currentBatch={code,row,variety:fieldFrom(row,K_VARIETY)};
+let currentBatch={code:'',row:null,stepCode:'',task:'',exact:false,variety:''};
+function openBatchInfo(code,res){
+  const row=res?res.row:null;
+  currentBatch={code,row,stepCode:res?res.stepCode:code,task:res?res.task:'',exact:res?res.exact:false,variety:fieldFrom(row,K_VARIETY)};
   const client=fieldFrom(row,K_CLIENT);
-  $('#batchTitle').textContent='Batch '+(fieldFrom(row,K_BATCH)||code||'-');
+  $('#batchTitle').textContent='Batch '+(code||'-');
   const top=$('#batchTop');top.innerHTML='';
   if(!row){top.append(el('div',{className:'banner warn',textContent:'Batch not found in the loaded file. You can still inspect; the code is recorded.'}));}
+  else if(!res.exact){top.append(el('div',{className:'banner info',textContent:'Current step: '+(res.task||'?')+'  ('+res.stepCode+')'}));}
   if(currentBatch.variety)top.append(kvEl('Variety',currentBatch.variety));
   if(client)top.append(kvEl('Client',client));
   // other details
@@ -741,8 +755,8 @@ function openBatchInfo(code,row){
   show('batch');
 }
 function kvEl(k,v){const d=el('div',{className:'kv'});d.append(el('b',{textContent:k}),el('span',{textContent:v}));return d;}
-$('#btnStartInspection').onclick=()=>openInspection({batchCode:currentBatch.code,variety:currentBatch.variety,row:currentBatch.row});
-$('#btnEditBatch').onclick=()=>openBatchEdit(currentBatch.code,currentBatch.row,currentBatch.variety);
+$('#btnStartInspection').onclick=()=>openInspection({batchCode:currentBatch.code,variety:currentBatch.variety,row:currentBatch.row,stepCode:currentBatch.stepCode});
+$('#btnEditBatch').onclick=()=>openBatchEdit(currentBatch.stepCode||currentBatch.code,currentBatch.row,currentBatch.variety);
 
 /* ================================================================
    Batch edit (Fase 2) — capture & propose batch mutations
@@ -818,7 +832,7 @@ function buildBrowse(){
     const item=el('div',{className:'list-item'});
     const g=el('div',{className:'grow'});
     g.append(el('div',{className:'t',textContent:code||'(no code)'}),el('div',{className:'s',textContent:[variety,client].filter(Boolean).join(' · ')}));
-    item.append(g,el('button',{className:'btn ghost sm',textContent:'Open',onclick:()=>openBatchInfo(code,r)}));
+    item.append(g,el('button',{className:'btn ghost sm',textContent:'Open',onclick:()=>openBatchInfo(code,{row:r,stepCode:fieldFrom(r,K_BATCH),task:fieldFrom(r,['Task']),exact:true})}));
     list.append(item);
   }
   if(!n)list.append(el('p',{className:'muted',textContent:'No results.'}));
@@ -831,7 +845,7 @@ $('#browseSearch').oninput=buildBrowse;
 let insp={batchCode:'',variety:'',row:null,editId:null,photos:[]}; // photos: [{key,thumb}]
 let countCtrls=[],sizeCtrls=[];
 function openInspection(opts){
-  insp={batchCode:opts.batchCode||'',variety:opts.variety||'',row:opts.row||null,editId:opts.editId||null,photos:opts.photos?opts.photos.slice():[]};
+  insp={batchCode:opts.batchCode||'',stepCode:opts.stepCode||opts.batchCode||'',variety:opts.variety||'',row:opts.row||null,editId:opts.editId||null,photos:opts.photos?opts.photos.slice():[]};
   countCtrls=opts.counts?opts.counts.slice():[];
   sizeCtrls=opts.sizes?opts.sizes.slice():[];
   $('#inBatch').value=insp.batchCode;
@@ -847,10 +861,11 @@ function openInspection(opts){
 }
 function updateBatchMeta(){
   const code=$('#inBatch').value.trim();
-  const row=BATCHES.index.get(code);
-  if(row){insp.row=row;insp.variety=fieldFrom(row,K_VARIETY);
-    $('#inBatchMeta').textContent=[insp.variety,fieldFrom(row,K_CLIENT)].filter(Boolean).join(' · ');}
-  else{$('#inBatchMeta').textContent=code?'(not in file — recorded anyway)':'';}
+  const res=resolveBatchRow(code);
+  if(res){insp.row=res.row;insp.stepCode=res.stepCode;insp.variety=fieldFrom(res.row,K_VARIETY);
+    const bits=[insp.variety,fieldFrom(res.row,K_CLIENT)];if(!res.exact)bits.push('current step: '+(res.task||'?'));
+    $('#inBatchMeta').textContent=bits.filter(Boolean).join(' · ');}
+  else{insp.stepCode=code;$('#inBatchMeta').textContent=code?'(not in file — recorded anyway)':'';}
 }
 $('#inBatch').oninput=updateBatchMeta;
 
@@ -1132,7 +1147,7 @@ $('#reviewConfirm').onclick=async()=>{
   if(counts.length>=3 && rec.batchCode){
     const ppp=Math.round(mean(counts));
     const be={id:'be_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),timestamp:new Date().toISOString(),
-      batchCode:rec.batchCode,variety:rec.variety||'',action:'ppp_from_count',
+      batchCode:(insp.stepCode||rec.batchCode),variety:rec.variety||'',action:'ppp_from_count',
       plantsOrScales:'',plantsHarvested:'',expected:'',wastePct:'',pots:'',plantsPerPot:ppp,location:'',stepStatus:'',
       note:'auto: '+counts.length+' pot counts (mean '+mean(counts).toFixed(1)+')'};
     await DB.set('batchedits',null,be);
