@@ -577,20 +577,49 @@ async function pickBatchesFile(file){
    ================================================================ */
 const stack=['home'];
 const TITLES={home:'AER Field App',batch:'Batch',batchedit:'Update batch',insp:'New inspection',pending:'Queue',browse:'Batches',settings:'Settings'};
-function show(name,push=true){
+// Render a screen visually (no history/stack mutation)
+function render(name){
   $$('.screen').forEach(s=>s.classList.remove('active'));
-  $('#screen-'+name).classList.add('active');
+  const scr=$('#screen-'+name);if(scr)scr.classList.add('active');
   $('#title').textContent=TITLES[name]||'AER';
-  if(push){if(stack[stack.length-1]!==name)stack.push(name);}
   $('#backBtn').style.display=stack.length>1?'block':'none';
   $('#settingsBtn').style.display=(name==='home')?'block':'none';
   window.scrollTo(0,0);
 }
-function back(){
-  if(stack.length>1){stack.pop();const prev=stack[stack.length-1];show(prev,false);}
+// Forward navigation — pushes a browser history entry so the Back gesture/button
+// is captured by the app instead of closing the page.
+function show(name,push=true){
+  if(push && stack[stack.length-1]!==name){stack.push(name);history.pushState({s:name,depth:stack.length},'');}
+  render(name);
 }
+// All "go back" actions route through history so one handler decides what happens.
+function back(){history.back();}
 $('#backBtn').onclick=back;
 $('#settingsBtn').onclick=()=>{buildSettings();show('settings');};
+
+/* ---- Back-gesture / Back-button controller ---- */
+function anyOverlayOpen(){return $('#photoViewer').classList.contains('on')||$('#camWrap').classList.contains('on')||$('#scanWrap').classList.contains('on')||$('#reviewModal').classList.contains('on');}
+function closeTopOverlay(){
+  if($('#photoViewer').classList.contains('on')){pvClose();return true;}
+  if($('#camWrap').classList.contains('on')){closeCam();return true;}
+  if($('#scanWrap').classList.contains('on')){stopScan();return true;}
+  if($('#reviewModal').classList.contains('on')){$('#reviewModal').classList.remove('on');return true;}
+  return false;
+}
+function hasUnsavedInspection(){return stack[stack.length-1]==='insp' && !!(insp && insp.photos && insp.photos.length>0);}
+window.addEventListener('popstate',()=>{
+  // 1) A full-screen overlay is open → back just closes it, keep the app open.
+  if(anyOverlayOpen()){closeTopOverlay();history.pushState({s:stack[stack.length-1]},'');return;}
+  // 2) Leaving an inspection with photos → confirm first.
+  if(hasUnsavedInspection()){
+    if(!confirm('Leave this inspection? The photos and entries you made here will be discarded.')){history.pushState({s:'insp'},'');return;}
+    insp.photos=[];
+  }
+  // 3) Normal in-app back.
+  if(stack.length>1){stack.pop();render(stack[stack.length-1]);refreshHome();}
+  else{history.pushState({s:'home'},'');toast('Home screen — close the browser tab to exit.');}
+});
+window.addEventListener('beforeunload',e=>{if(hasUnsavedInspection()){e.preventDefault();e.returnValue='';}});
 
 /* ================================================================
    Home
@@ -1074,6 +1103,7 @@ $('#reviewConfirm').onclick=async()=>{
     await DB.set('batchedits',null,be);
     toast('Plants/pot set to '+ppp+' (from '+counts.length+' pot counts)');
   }
+  insp.photos=[]; // saved — clear so the back-guard doesn't ask to discard
   back();refreshHome();
 };
 
@@ -1304,6 +1334,7 @@ $('#setWarn').onchange=()=>{SETTINGS.warn=Math.max(10,Math.min(500,parseInt($('#
   try{await DB.open();await loadSettings();await loadBatchesFromStore();}
   catch(e){console.error(e);toast('Storage error: '+e.message);}
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
+  history.replaceState({s:'home',depth:1},'');
   refreshHome();show('home',false);
 })();
 </script>
