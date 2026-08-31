@@ -1,11 +1,12 @@
 /* AER Field App service worker — offline shell + cached SheetJS */
-const CACHE = 'aer-field-v10';
+const CACHE = 'aer-field-v11';
 const ASSETS = [
   'AER_Field_App.html',
   'manifest.webmanifest',
   'icon-192.png',
   'icon-512.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  'https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js'
 ];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.allSettled(ASSETS.map(a => c.add(a)))));

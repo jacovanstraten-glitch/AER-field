@@ -345,7 +345,16 @@
           <button class="btn secondary sm" id="btnConnectDir">Connect folder</button>
           <button class="btn ghost sm" id="btnForgetDir" style="display:none">Disconnect</button>
         </div>
-        <div class="s muted" style="margin-top:8px">Desktop only. On desktop this writes the CSVs + loose photos straight into a OneDrive folder — no sharing or unzipping. On your phone, use <b>Export</b> on the home screen and pick OneDrive from the share menu (OneDrive can't be a direct folder target on Android).</div>
+        <div class="s muted" style="margin-top:8px">Desktop only. On desktop this writes the CSVs + loose photos straight into a OneDrive folder — no sharing or unzipping. On your phone, use <b>Connect OneDrive</b> below (or, as a fallback, <b>Export</b> → share menu → OneDrive).</div>
+      </div>
+      <h2 class="section">OneDrive upload (phone)</h2>
+      <div class="card">
+        <div class="s muted" id="oneDriveStatus" style="margin-bottom:8px"></div>
+        <div class="row" style="gap:10px">
+          <button class="btn secondary sm" id="btnConnectOneDrive">Connect OneDrive</button>
+          <button class="btn ghost sm" id="btnForgetOneDrive" style="display:none">Disconnect</button>
+        </div>
+        <div class="s muted" style="margin-top:8px">Sign in once with your Microsoft account, then <b>Export</b> uploads the inspections, batch changes and photos straight into <b>OneDrive → Crop Inspection → inbox</b> — no share menu, no folder picking.</div>
       </div>
       <h2 class="section">About</h2>
       <div class="card muted" style="font-size:13px">
@@ -437,9 +446,10 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-08-31 · r12';
+const APP_VERSION='2026-08-31 · r13';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -1319,23 +1329,37 @@ async function exportPackage(){
     if(edits.length){outFiles.push({name:'batch_edits_'+stamp+'.csv',blob:new Blob([buildBatchEditsCsv(edits)],{type:'text/csv'})});}
 
     // Path A: direct write to a connected folder (desktop, File System Access)
-    let delivered=false, mode='';
     const dir=await getExportDir();
     if(dir){
       try{
         for(const f of outFiles){await writeFileToDir(dir,f.name,f.blob);}
         if(photoFiles.length){const pdir=await dir.getDirectoryHandle('photos',{create:true});for(const p of photoFiles){await writeFileToDir(pdir,p.name,new Blob([p.data],{type:'image/jpeg'}));}}
-        delivered=true;mode='folder';
+        if(finishExportClearPrompt(items,edits,photoFiles.length,'saved to folder "'+(dir.name||'')+'"')){await clearQueue(items,edits);toast('Queue cleared');}else toast('Queue kept');
+        refreshHome();$('#btnExport').disabled=false;return;
       }catch(e){console.warn('Direct folder write failed, falling back',e);}
     }
-    if(delivered){
-      // Desktop folder write already done → ask about clearing the queue.
-      if(finishExportClearPrompt(items,edits,photoFiles.length,'saved to folder "'+(dir.name||'')+'"')){await clearQueue(items,edits);toast('Queue cleared');}else toast('Queue kept');
-      refreshHome();$('#btnExport').disabled=false;return;
-    }
-    // Path B: phone / no folder → open a share sheet from a FRESH tap (below),
-    // so Android accepts the share instead of falling back to a download.
+
+    // Build the photos zip once (used by the OneDrive upload and the share/download fallback).
     const zip=photoFiles.length?{name:'photos_'+stamp+'.zip',blob:makeZip(photoFiles)}:null;
+
+    // Path B: OneDrive direct upload (Microsoft Graph) — the phone route.
+    if(isOneDriveConnected()){
+      try{
+        const token=await getGraphToken();
+        const total=outFiles.length+(zip?1:0); let n=0;
+        for(const f of outFiles){toast('Uploading to OneDrive… '+(++n)+'/'+total);await graphUploadFile(f.name,f.blob,token);}
+        if(zip){toast('Uploading photos… '+(++n)+'/'+total);await graphUploadFile(zip.name,zip.blob,token);}
+        if(finishExportClearPrompt(items,edits,photoFiles.length,'uploaded to OneDrive → Crop Inspection → inbox')){await clearQueue(items,edits);toast('Queue cleared');}else toast('Queue kept');
+        refreshHome();$('#btnExport').disabled=false;return;
+      }catch(e){
+        console.warn('OneDrive upload failed',e);
+        toast('OneDrive upload failed — you can share or download instead');
+        // fall through to the share/download modal
+      }
+    }
+
+    // Path C: phone / no folder → open a share sheet from a FRESH tap (below),
+    // so Android accepts the share instead of falling back to a download.
     const shareFiles=outFiles.map(f=>new File([f.blob],f.name,{type:'text/csv'}));
     if(zip)shareFiles.push(new File([zip.blob],zip.name,{type:'application/zip'}));
     pendingExport={items,edits,outFiles,zip,shareFiles,photoCount:photoFiles.length};
@@ -1430,6 +1454,83 @@ function makeZip(files){
 }
 
 /* ================================================================
+   OneDrive (Microsoft Graph) direct upload — the phone route
+   Signs in once with the user's Microsoft account, then Export
+   uploads the CSVs + photos zip straight into the inbox folder.
+   ================================================================ */
+const MSAL_CLIENT_ID='9c32f874-5857-4f52-90ae-31f75392f90e';
+const MSAL_AUTHORITY='https://login.microsoftonline.com/consumers';
+const GRAPH_SCOPES=['Files.ReadWrite'];
+const ONEDRIVE_INBOX='Ethiopica Roots/02 Production/Crop Inspection/inbox';
+let MSAL=null, MSAL_READY=false;
+function msalRedirectUri(){return location.origin+location.pathname;}
+async function initMsal(){
+  if(MSAL_READY)return {res:null};
+  if(typeof msal==='undefined'||!msal.PublicClientApplication)return null;
+  try{
+    MSAL=new msal.PublicClientApplication({
+      auth:{clientId:MSAL_CLIENT_ID,authority:MSAL_AUTHORITY,redirectUri:msalRedirectUri()},
+      cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}
+    });
+    const res=await MSAL.handleRedirectPromise();
+    if(res&&res.account)MSAL.setActiveAccount(res.account);
+    else{const accs=MSAL.getAllAccounts();if(accs.length&&!MSAL.getActiveAccount())MSAL.setActiveAccount(accs[0]);}
+    MSAL_READY=true;
+    return {res};
+  }catch(e){console.warn('MSAL init failed',e);return null;}
+}
+function oneDriveAccount(){try{return MSAL&&MSAL.getActiveAccount();}catch(e){return null;}}
+function isOneDriveConnected(){return !!oneDriveAccount();}
+async function connectOneDrive(){
+  await initMsal();
+  if(!MSAL){toast('OneDrive sign-in isn’t available — check your connection and try again');return;}
+  try{await MSAL.loginRedirect({scopes:GRAPH_SCOPES,prompt:'select_account'});}
+  catch(e){toast('OneDrive sign-in failed: '+(e.message||e));}
+}
+async function disconnectOneDrive(){
+  try{MSAL&&MSAL.setActiveAccount(null);}catch(e){}
+  try{
+    const keys=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&(k.indexOf(MSAL_CLIENT_ID)>=0||k.indexOf('msal.')===0))keys.push(k);}
+    keys.forEach(k=>localStorage.removeItem(k));
+  }catch(e){}
+  MSAL_READY=false;MSAL=null;
+  toast('OneDrive disconnected — reconnect anytime in Settings');buildSettings();
+}
+async function getGraphToken(){
+  await initMsal();
+  const acc=oneDriveAccount();
+  if(!MSAL||!acc)throw new Error('OneDrive not connected');
+  const r=await MSAL.acquireTokenSilent({scopes:GRAPH_SCOPES,account:acc});
+  return r.accessToken;
+}
+function graphPath(name){return (ONEDRIVE_INBOX+'/'+name).split('/').map(encodeURIComponent).join('/');}
+async function graphPutSmall(name,blob,token){
+  const url='https://graph.microsoft.com/v1.0/me/drive/root:/'+graphPath(name)+':/content';
+  const r=await fetch(url,{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/octet-stream'},body:blob});
+  if(!r.ok)throw new Error('upload '+r.status+' '+(await r.text().catch(()=>'')).slice(0,180));
+  return r.json().catch(()=>({}));
+}
+async function graphPutLarge(name,blob,token){
+  const url='https://graph.microsoft.com/v1.0/me/drive/root:/'+graphPath(name)+':/createUploadSession';
+  const s=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'replace'}})});
+  if(!s.ok)throw new Error('session '+s.status+' '+(await s.text().catch(()=>'')).slice(0,180));
+  const {uploadUrl}=await s.json();
+  const total=blob.size, CH=5*320*1024; let start=0, last=null;
+  while(start<total){
+    const end=Math.min(start+CH,total);
+    const cr=await fetch(uploadUrl,{method:'PUT',headers:{'Content-Range':'bytes '+start+'-'+(end-1)+'/'+total},body:blob.slice(start,end)});
+    if(cr.status===202){/* keep going */}
+    else if(cr.status===200||cr.status===201){last=await cr.json().catch(()=>({}));}
+    else{throw new Error('chunk '+cr.status+' '+(await cr.text().catch(()=>'')).slice(0,180));}
+    start=end;
+  }
+  return last||{};
+}
+async function graphUploadFile(name,blob,token){
+  return (blob.size<=4*1024*1024)?graphPutSmall(name,blob,token):graphPutLarge(name,blob,token);
+}
+
+/* ================================================================
    Settings screen
    ================================================================ */
 async function buildSettings(){
@@ -1450,11 +1551,20 @@ async function buildSettings(){
   // export dir status
   const ds=$('#exportDirStatus');
   $$('#speechSeg button').forEach(b=>b.classList.toggle('on',b.dataset.lang===(SETTINGS.speechLang||'en-US')));
-  if(!FSA_SUPPORTED){ds.textContent=IS_MOBILE?'On your phone, use Export (home screen) and pick OneDrive in the share menu.':'Not supported on this browser (desktop Chrome/Edge only).';$('#btnConnectDir').style.display='none';$('#btnForgetDir').style.display='none';}
-  else{const h=await DB.get('kv','exportDir');if(h){ds.textContent='Connected: '+h.name;$('#btnForgetDir').style.display='';}else{ds.textContent='No folder connected yet — export uses share/download.';$('#btnForgetDir').style.display='none';}}
+  if(!FSA_SUPPORTED){ds.textContent=IS_MOBILE?'On your phone, connect OneDrive below (or use Export → share menu).':'Not supported on this browser (desktop Chrome/Edge only).';$('#btnConnectDir').style.display='none';$('#btnForgetDir').style.display='none';}
+  else{const h=await DB.get('kv','exportDir');if(h){ds.textContent='Connected: '+h.name;$('#btnForgetDir').style.display='';}else{ds.textContent='No folder connected yet — export uses OneDrive or share/download.';$('#btnForgetDir').style.display='none';}}
+  // OneDrive (Graph) status
+  const od=$('#oneDriveStatus');
+  if(od){
+    const acc=oneDriveAccount();
+    if(acc){od.textContent='Connected as '+(acc.username||acc.name||'your Microsoft account')+'. Export uploads to Crop Inspection → inbox.';$('#btnForgetOneDrive').style.display='';$('#btnConnectOneDrive').textContent='Reconnect';}
+    else{od.textContent='Not connected. Tap Connect OneDrive to sign in once.';$('#btnForgetOneDrive').style.display='none';$('#btnConnectOneDrive').textContent='Connect OneDrive';}
+  }
 }
 $('#btnConnectDir').onclick=connectExportDir;
 $('#btnForgetDir').onclick=forgetExportDir;
+$('#btnConnectOneDrive').onclick=connectOneDrive;
+$('#btnForgetOneDrive').onclick=disconnectOneDrive;
 $$('#speechSeg button').forEach(b=>b.onclick=()=>{SETTINGS.speechLang=b.dataset.lang;saveSettings();buildSettings();});
 $$('#fontSeg button').forEach(b=>b.onclick=()=>{SETTINGS.fontFrac=parseFloat(b.dataset.font);saveSettings();buildSettings();});
 $$('#qualSeg button').forEach(b=>b.onclick=()=>{SETTINGS.quality=parseFloat(b.dataset.qual);saveSettings();buildSettings();});
@@ -1466,6 +1576,7 @@ $('#setWarn').onchange=()=>{SETTINGS.warn=Math.max(10,Math.min(500,parseInt($('#
 (async function boot(){
   try{await DB.open();await loadSettings();await loadBatchesFromStore();}
   catch(e){console.error(e);toast('Storage error: '+e.message);}
+  try{const m=await initMsal();if(m&&m.res&&m.res.account)setTimeout(()=>toast('OneDrive connected ✓'),700);}catch(e){}
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
   const vl=$('#verLabel');if(vl)vl.textContent='v'+APP_VERSION;
   history.replaceState({s:'home',depth:1},'');
