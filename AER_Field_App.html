@@ -449,7 +449,7 @@
 <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-08-31 · r13';
+const APP_VERSION='2026-08-31 · r14';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -1104,6 +1104,29 @@ $('#camShutter').onclick=async(ev)=>{
 };
 function makeThumb(srcCanvas){const t=el('canvas');const s=Math.min(1,200/srcCanvas.width);t.width=srcCanvas.width*s;t.height=srcCanvas.height*s;t.getContext('2d').drawImage(srcCanvas,0,0,t.width,t.height);return t.toDataURL('image/jpeg',0.6);}
 
+function isoWeekMonday(year,week){
+  // Monday of ISO week `week` in `year`. Jan 4 is always in ISO week 1.
+  const jan4=new Date(year,0,4);
+  const dow=(jan4.getDay()+6)%7; // Mon=0 … Sun=6
+  const w1mon=new Date(jan4);w1mon.setDate(jan4.getDate()-dow);
+  const d=new Date(w1mon);d.setDate(w1mon.getDate()+(week-1)*7);
+  return d;
+}
+function batchStartDate(row){
+  // 1) an explicit start-date column, if this row ever has one (old-CSV compatibility)
+  let d=parseDate(fieldFrom(row,['Start_Date','Start Date','StartDate']));
+  if(d)return d;
+  // 2) derive from the batch's ISO year + week (AER_Data.xlsx Batches: 'ISO Year' / 'ISO Week')
+  let y=parseInt(fieldFrom(row,['ISO Year','ISO_Year','ISOYear']),10);
+  let w=parseInt(fieldFrom(row,['ISO Week','ISO_Week','ISOWeek']),10);
+  // 3) fallback: parse a combined 'Year Week' cell like "2025 Week29"
+  if(!(y>0&&w>0)){
+    const m=String(fieldFrom(row,['Year Week','Year_Week','YearWeek'])||'').match(/(\d{4})\D+(\d{1,2})/);
+    if(m){y=+m[1];w=+m[2];}
+  }
+  if(y>0&&w>=1&&w<=53)return isoWeekMonday(y,w);
+  return null;
+}
 function resolveWM(id,now){
   const row=insp.row;const batch=sanitize($('#inBatch').value||'-');const variety=sanitize(insp.variety||'-');
   const csv=(keys)=>sanitize(fieldFrom(row,keys));
@@ -1111,8 +1134,8 @@ function resolveWM(id,now){
     case 'variety':return variety;
     case 'batch':return batch;
     case 'date':return fmtDateDMY(now);
-    case 'start_date':{const d=parseDate(fieldFrom(row,['Start_Date','Start Date','StartDate']));return d?fmtDateDMY(d):'';}
-    case 'age':{const d=parseDate(fieldFrom(row,['Start_Date','Start Date','StartDate']));if(!d)return '';const days=Math.floor((now-d)/86400000);return (days>=0?Math.floor(days/7):0)+'w';}
+    case 'start_date':{const d=batchStartDate(row);return d?fmtDateDMY(d):'';}
+    case 'age':{const d=batchStartDate(row);if(!d)return '';const days=Math.floor((now-d)/86400000);return (days>=0?Math.floor(days/7):0)+'w';}
     case 'client_name':return csv(['Client_Name','Client Name','Client','Customer']);
     case 'client_id':return csv(['Client_ID','ClientID','Client Id']);
     case 'product_name':return csv(['Product_Name','ProductName']);
