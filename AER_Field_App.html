@@ -419,12 +419,27 @@
   </div>
 </div>
 
+<!-- Share (export) modal -->
+<div class="modal" id="shareModal">
+  <div class="box">
+    <h3>Send export</h3>
+    <div id="shareBody" class="muted" style="font-size:14px"></div>
+    <div class="row" style="margin-top:16px;gap:10px">
+      <button class="btn" id="shareSend" style="flex:1">📤 Send to OneDrive</button>
+    </div>
+    <div class="row" style="margin-top:10px;gap:10px">
+      <button class="btn ghost" id="shareCancel">Cancel</button>
+      <button class="btn ghost" id="shareDownload">⬇ Download instead</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-08-30 · r11';
+const APP_VERSION='2026-08-31 · r12';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -617,13 +632,14 @@ $('#backBtn').onclick=back;
 $('#settingsBtn').onclick=()=>{buildSettings();show('settings');};
 
 /* ---- Back-gesture / Back-button controller ---- */
-function anyOverlayOpen(){return $('#photoViewer').classList.contains('on')||$('#camWrap').classList.contains('on')||$('#scanWrap').classList.contains('on')||$('#reviewModal').classList.contains('on')||$('#refreshGate').classList.contains('on');}
+function anyOverlayOpen(){return $('#photoViewer').classList.contains('on')||$('#camWrap').classList.contains('on')||$('#scanWrap').classList.contains('on')||$('#reviewModal').classList.contains('on')||$('#refreshGate').classList.contains('on')||$('#shareModal').classList.contains('on');}
 function closeTopOverlay(){
   if($('#photoViewer').classList.contains('on')){pvClose();return true;}
   if($('#camWrap').classList.contains('on')){closeCam();return true;}
   if($('#scanWrap').classList.contains('on')){stopScan();return true;}
   if($('#reviewModal').classList.contains('on')){$('#reviewModal').classList.remove('on');return true;}
   if($('#refreshGate').classList.contains('on') && BATCHES.rows.length){$('#refreshGate').classList.remove('on');return true;}
+  if($('#shareModal').classList.contains('on')){$('#shareModal').classList.remove('on');pendingExport=null;return true;}
   return false;
 }
 function hasUnsavedInspection(){return stack[stack.length-1]==='insp' && !!(insp && insp.photos && insp.photos.length>0);}
@@ -1312,30 +1328,55 @@ async function exportPackage(){
         delivered=true;mode='folder';
       }catch(e){console.warn('Direct folder write failed, falling back',e);}
     }
-    // Path B: Web Share / download (phone or no folder)
-    if(!delivered){
-      const zip=photoFiles.length?{name:'photos_'+stamp+'.zip',blob:makeZip(photoFiles)}:null;
-      const shareFiles=outFiles.map(f=>new File([f.blob],f.name,{type:'text/csv'}));
-      if(zip)shareFiles.push(new File([zip.blob],zip.name,{type:'application/zip'}));
-      let shared=false;
-      if(navigator.canShare&&navigator.canShare({files:shareFiles})){
-        try{await navigator.share({files:shareFiles,title:'AER export',text:'AER inspection and batch data'});shared=true;mode='share';}
-        catch(e){if(e&&e.name==='AbortError'){$('#btnExport').disabled=false;return;}}
-      }
-      if(!shared){for(const f of outFiles)downloadBlob(f.blob,f.name);if(zip)downloadBlob(zip.blob,zip.name);mode='download';}
-      delivered=true;
+    if(delivered){
+      // Desktop folder write already done → ask about clearing the queue.
+      if(finishExportClearPrompt(items,edits,photoFiles.length,'saved to folder "'+(dir.name||'')+'"')){await clearQueue(items,edits);toast('Queue cleared');}else toast('Queue kept');
+      refreshHome();$('#btnExport').disabled=false;return;
     }
-    const where=mode==='folder'?('saved to folder "'+(dir.name||'')+'"'):(mode==='share'?'shared':'downloaded');
-    const ok=confirm('Export '+where+':\n'+items.length+' inspection(s), '+edits.length+' batch change(s), '+photoFiles.length+' photos.\n\nClear the queue now?\n\nOK = clear · Cancel = keep');
-    if(ok){
-      for(const it of items){for(const k of (it.photos||[]))await DB.del('photos',k);await DB.del('pending',it.id);}
-      for(const e of edits)await DB.del('batchedits',e.id);
-      toast('Queue cleared');
-    } else toast('Queue kept');
-    refreshHome();
-  }catch(e){toast('Export failed: '+e.message);}
-  $('#btnExport').disabled=false;
+    // Path B: phone / no folder → open a share sheet from a FRESH tap (below),
+    // so Android accepts the share instead of falling back to a download.
+    const zip=photoFiles.length?{name:'photos_'+stamp+'.zip',blob:makeZip(photoFiles)}:null;
+    const shareFiles=outFiles.map(f=>new File([f.blob],f.name,{type:'text/csv'}));
+    if(zip)shareFiles.push(new File([zip.blob],zip.name,{type:'application/zip'}));
+    pendingExport={items,edits,outFiles,zip,shareFiles,photoCount:photoFiles.length};
+    $('#btnExport').disabled=false;
+    openShareModal();
+  }catch(e){toast('Export failed: '+e.message);$('#btnExport').disabled=false;}
 }
+function finishExportClearPrompt(items,edits,photoCount,whereText){
+  return confirm('Export '+whereText+':\n'+items.length+' inspection(s), '+edits.length+' batch change(s), '+photoCount+' photos.\n\nClear the queue now?\n\nOK = clear · Cancel = keep');
+}
+async function clearQueue(items,edits){
+  for(const it of items){for(const k of (it.photos||[]))await DB.del('photos',k);await DB.del('pending',it.id);}
+  for(const e of edits)await DB.del('batchedits',e.id);
+}
+/* Two-step share so the Android share sheet opens from a real user gesture */
+let pendingExport=null;
+function openShareModal(){
+  const pe=pendingExport;if(!pe)return;
+  $('#shareBody').innerHTML='Package ready: <b>'+pe.items.length+'</b> inspection(s), <b>'+pe.edits.length+'</b> batch change(s), <b>'+pe.photoCount+'</b> photos.<br><br>Tap <b>Send to OneDrive</b>, then choose <b>OneDrive → Crop Inspection → inbox</b>. OneDrive remembers that folder next time.';
+  $('#shareModal').classList.add('on');
+}
+$('#shareSend').onclick=async()=>{
+  const pe=pendingExport;if(!pe)return;
+  try{
+    await navigator.share({files:pe.shareFiles,title:'AER export'});
+    $('#shareModal').classList.remove('on');
+    if(finishExportClearPrompt(pe.items,pe.edits,pe.photoCount,'shared')){await clearQueue(pe.items,pe.edits);toast('Queue cleared');}else toast('Queue kept');
+    pendingExport=null;refreshHome();
+  }catch(e){
+    if(e&&e.name==='AbortError'){toast('Share cancelled — queue kept');return;}
+    toast('This device can’t share files — use Download instead');
+  }
+};
+$('#shareDownload').onclick=async()=>{
+  const pe=pendingExport;if(!pe)return;
+  for(const f of pe.outFiles)downloadBlob(f.blob,f.name);if(pe.zip)downloadBlob(pe.zip.blob,pe.zip.name);
+  $('#shareModal').classList.remove('on');
+  if(finishExportClearPrompt(pe.items,pe.edits,pe.photoCount,'downloaded')){await clearQueue(pe.items,pe.edits);toast('Queue cleared');}else toast('Queue kept');
+  pendingExport=null;refreshHome();
+};
+$('#shareCancel').onclick=()=>{$('#shareModal').classList.remove('on');pendingExport=null;toast('Export cancelled — queue kept');};
 
 /* ---- File System Access: optional direct-to-folder export (desktop) ---- */
 const IS_MOBILE=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');
