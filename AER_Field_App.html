@@ -77,7 +77,7 @@
   #camWrap.on{display:flex}
   #camVideo{flex:1;width:100%;object-fit:cover;background:#000}
   #scanVideo{flex:1;width:100%;object-fit:cover;background:#000}
-  .cambar{display:flex;gap:12px;align-items:center;justify-content:center;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom));background:#000}
+  .cambar{display:flex;gap:12px;align-items:center;justify-content:center;padding:16px;padding-bottom:calc(52px + env(safe-area-inset-bottom));background:#000}
   .shutter{width:68px;height:68px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.4);cursor:pointer}
   .camclose{position:absolute;top:calc(10px + env(safe-area-inset-top));left:12px;background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-size:15px;z-index:2;cursor:pointer}
   .scan-frame{position:absolute;top:0;left:0;right:0;bottom:80px;display:flex;align-items:center;justify-content:center;pointer-events:none}
@@ -115,9 +115,13 @@
   .seg button.on{background:var(--green);color:#fff}
   #beStep button{font-size:12px;padding:9px 3px;line-height:1.15}
   hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+  #splash{position:fixed;inset:0;z-index:100;background:var(--green);display:flex;align-items:center;justify-content:center;transition:opacity .35s ease}
+  #splash.hide{opacity:0;pointer-events:none}
+  #splash img{width:180px;height:180px;border-radius:32px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 </style>
 </head>
 <body>
+<div id="splash"><img src="icon-512.png" alt="AER"></div>
 <div class="app">
   <header>
     <button class="back" id="backBtn" aria-label="Terug">‹</button>
@@ -449,7 +453,7 @@
 <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-08-31 · r15';
+const APP_VERSION='2026-08-31 · r16';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -1072,13 +1076,16 @@ function captureRotation(){
   if(gammaSeen&&Math.abs(lastGamma)>35)return lastGamma>0?90:-90; // screen stayed portrait but phone is physically landscape
   return 0;
 }
+function enterFsQuiet(){try{const e=document.documentElement;if(e.requestFullscreen&&!document.fullscreenElement)e.requestFullscreen({navigationUI:'hide'}).catch(()=>{});}catch(_){}}
+function exitFsQuiet(){try{if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});}catch(_){}}
 async function openPhotoCam(){
   if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast(cameraBlockedMsg());return;}
+  enterFsQuiet(); // hide the browser/system (Google) bar while shooting; needs the current tap gesture
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:3000},height:{ideal:4000}}});}
-  catch(e){toast('Camera unavailable');return;}
+  catch(e){exitFsQuiet();toast('Camera unavailable');return;}
   const v=$('#camVideo');v.srcObject=camStream;$('#camWrap').classList.add('on');await v.play().catch(()=>{});
 }
-function closeCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}$('#camWrap').classList.remove('on');}
+function closeCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}$('#camWrap').classList.remove('on');exitFsQuiet();}
 $('#camClose').onclick=closeCam;
 let _capturing=false;
 $('#camShutter').onclick=async(ev)=>{
@@ -1617,6 +1624,7 @@ $('#setWarn').onchange=()=>{SETTINGS.warn=Math.max(10,Math.min(500,parseInt($('#
   refreshHome();show('home',false);
   setTimeout(()=>toast('AER Field App · v'+APP_VERSION),400);
   setTimeout(maybeShowRefreshGate,700);
+  const sp=$('#splash');if(sp){setTimeout(()=>{sp.classList.add('hide');setTimeout(()=>sp.remove(),400);},1000);}
 })();
 </script>
 </body>

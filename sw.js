@@ -1,6 +1,6 @@
 /* AER Field App service worker — network-first for the app shell, cache-first for assets.
    Network-first HTML means: when online you always get the newest app; offline you get the cached copy. */
-const CACHE = 'aer-field-v13';
+const CACHE = 'aer-field-v14';
 const ASSETS = [
   'AER_Field_App.html',
   'manifest.webmanifest',
