@@ -449,7 +449,7 @@
 <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-08-31 · r14';
+const APP_VERSION='2026-08-31 · r15';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -1600,7 +1600,18 @@ $('#setWarn').onchange=()=>{SETTINGS.warn=Math.max(10,Math.min(500,parseInt($('#
   try{await DB.open();await loadSettings();await loadBatchesFromStore();}
   catch(e){console.error(e);toast('Storage error: '+e.message);}
   try{const m=await initMsal();if(m&&m.res&&m.res.account)setTimeout(()=>toast('OneDrive connected ✓'),700);}catch(e){}
-  if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
+  if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
+    try{
+      const hadController=!!navigator.serviceWorker.controller;
+      const reg=await navigator.serviceWorker.register('sw.js');
+      try{reg.update();}catch(e){}
+      const promote=w=>{try{w&&w.postMessage({type:'SKIP_WAITING'});}catch(e){}};
+      if(reg.waiting)promote(reg.waiting);
+      reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(nw)nw.addEventListener('statechange',()=>{if(nw.state==='installed')promote(reg.waiting||nw);});});
+      let _swReloaded=false;
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!hadController||_swReloaded)return;_swReloaded=true;location.reload();});
+    }catch(e){}
+  }
   const vl=$('#verLabel');if(vl)vl.textContent='v'+APP_VERSION;
   history.replaceState({s:'home',depth:1},'');
   refreshHome();show('home',false);
