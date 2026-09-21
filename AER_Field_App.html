@@ -112,6 +112,13 @@
   .sumrow b{min-width:130px;color:var(--muted);font-weight:600}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom));background:#222;color:#fff;padding:12px 16px;border-radius:12px;z-index:80;font-size:14px;max-width:90%;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none}
   .toast.on{opacity:1}
+  /* Upload progress bar */
+  .upbar{height:12px;background:#eceff1;border-radius:6px;overflow:hidden;margin-top:8px}
+  .upbar-fill{height:100%;background:linear-gradient(90deg,var(--green),var(--purple));width:0%;transition:width .3s ease}
+  #uploadModal .box{max-width:420px}
+  #upFile{font-weight:600;color:var(--ink);word-break:break-all;font-size:14px}
+  #upPct{font-weight:700;color:var(--green);font-size:22px}
+  #upStep{color:var(--muted);font-size:13px}
   .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
   .toggle:last-child{border-bottom:0}
   .switch{position:relative;width:46px;height:26px;flex:0 0 auto}
@@ -457,13 +464,29 @@
   </div>
 </div>
 
+<!-- Upload progress modal — shown during OneDrive upload; no cancel button (upload continues in the background of THIS page only) -->
+<div class="modal" id="uploadModal">
+  <div class="box">
+    <h3>Uploading to OneDrive</h3>
+    <div id="upFile">Preparing…</div>
+    <div class="upbar"><div class="upbar-fill" id="upFill"></div></div>
+    <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:8px">
+      <div id="upPct">0%</div>
+      <div id="upStep">—</div>
+    </div>
+    <div class="s muted" style="margin-top:14px;font-size:12px;line-height:1.4">
+      Keep the app open and the screen on. Switching to another app or letting the screen lock can pause the upload. The retry logic recovers short interruptions, not long ones.
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-09-21 · r17';
+const APP_VERSION='2026-09-21 · r18';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -656,7 +679,7 @@ $('#backBtn').onclick=back;
 $('#settingsBtn').onclick=()=>{buildSettings();show('settings');};
 
 /* ---- Back-gesture / Back-button controller ---- */
-function anyOverlayOpen(){return $('#photoViewer').classList.contains('on')||$('#camWrap').classList.contains('on')||$('#scanWrap').classList.contains('on')||$('#reviewModal').classList.contains('on')||$('#refreshGate').classList.contains('on')||$('#shareModal').classList.contains('on');}
+function anyOverlayOpen(){return $('#photoViewer').classList.contains('on')||$('#camWrap').classList.contains('on')||$('#scanWrap').classList.contains('on')||$('#reviewModal').classList.contains('on')||$('#refreshGate').classList.contains('on')||$('#shareModal').classList.contains('on')||$('#uploadModal').classList.contains('on');}
 function closeTopOverlay(){
   if($('#photoViewer').classList.contains('on')){pvClose();return true;}
   if($('#camWrap').classList.contains('on')){closeCam();return true;}
@@ -664,6 +687,9 @@ function closeTopOverlay(){
   if($('#reviewModal').classList.contains('on')){$('#reviewModal').classList.remove('on');return true;}
   if($('#refreshGate').classList.contains('on') && BATCHES.rows.length){$('#refreshGate').classList.remove('on');return true;}
   if($('#shareModal').classList.contains('on')){$('#shareModal').classList.remove('on');pendingExport=null;return true;}
+  // Upload in progress — swallow back gestures. Hiding the modal wouldn't stop
+  // the upload, only remove the feedback, so refuse it and tell the user.
+  if($('#uploadModal').classList.contains('on')){toast('Upload in progress — please wait');return true;}
   return false;
 }
 function hasUnsavedInspection(){return stack[stack.length-1]==='insp' && !!(insp && insp.photos && insp.photos.length>0);}
@@ -1415,6 +1441,56 @@ function buildBatchEditsCsv(edits){
 }
 function stampNow(){const n=new Date();return ''+n.getFullYear()+pad(n.getMonth()+1)+pad(n.getDate())+'_'+pad(n.getHours())+pad(n.getMinutes())+pad(n.getSeconds());}
 
+/* ---- Upload UI: wake lock + progress modal ----
+   The percent number is BYTE-EXACT for chunked uploads (the photo zip),
+   because we advance it on every completed chunk. Small files (<4 MB) are a
+   single PUT with no in-flight progress; the bar jumps when they finish.
+   For a typical export (2 tiny CSVs + one large photo zip) that's almost all
+   of the total bytes → the bar moves smoothly. Time estimates are deliberately
+   NOT shown — network speed varies too much to be trustworthy. */
+let _wakeLockRef=null,_uploadOpen=false;
+async function requestWakeLock(){
+  if(_wakeLockRef)return _wakeLockRef;
+  try{
+    if('wakeLock' in navigator){
+      _wakeLockRef=await navigator.wakeLock.request('screen');
+      _wakeLockRef.addEventListener&&_wakeLockRef.addEventListener('release',()=>{if(_wakeLockRef===this)_wakeLockRef=null;});
+      return _wakeLockRef;
+    }
+  }catch(e){console.warn('wake lock unavailable',e);}
+  return null;
+}
+function releaseWakeLock(w){
+  const target=w||_wakeLockRef;
+  try{target&&target.release&&target.release();}catch(e){}
+  if(target===_wakeLockRef)_wakeLockRef=null;
+}
+// Re-acquire the lock if the tab comes back to focus during an upload
+// (Android may have dropped it when the tab was hidden).
+document.addEventListener('visibilitychange',async()=>{
+  if(document.visibilityState==='visible'&&_uploadOpen&&!_wakeLockRef){await requestWakeLock();}
+});
+function openUploadProgress(){
+  _uploadOpen=true;
+  $('#uploadModal').classList.add('on');
+  $('#upFile').textContent='Preparing…';
+  $('#upFill').style.width='0%';
+  $('#upPct').textContent='0%';
+  $('#upStep').textContent='—';
+  return {
+    update(o){
+      if(o.file)$('#upFile').textContent=o.file;
+      if(o.idx&&o.total)$('#upStep').textContent='File '+o.idx+' of '+o.total;
+      if(typeof o.frac==='number'){
+        const p=Math.max(0,Math.min(100,Math.round(o.frac*100)));
+        $('#upFill').style.width=p+'%';
+        $('#upPct').textContent=p+'%';
+      }
+    },
+    close(){_uploadOpen=false;$('#uploadModal').classList.remove('on');}
+  };
+}
+
 async function exportPackage(){
   const items=(await DB.all('pending')).sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
   const edits=(await DB.all('batchedits')).sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
@@ -1446,6 +1522,8 @@ async function exportPackage(){
 
     // Path B: OneDrive direct upload (Microsoft Graph) — the phone route.
     if(isOneDriveConnected()){
+      const wake=await requestWakeLock();
+      const prog=openUploadProgress();
       try{
         // A token getter — called before every request so a retry after a
         // 401/expired-token can re-acquire cleanly. Interactive fallback is
@@ -1454,19 +1532,35 @@ async function exportPackage(){
         // Sanity-probe the token once up-front. If MSAL needs interactive,
         // it will redirect from inside getGraphToken and this call throws.
         await getTok();
-        const total=outFiles.length+(zip?1:0); let n=0;
-        for(const f of outFiles){toast('Uploading to OneDrive… '+(++n)+'/'+total+' — '+f.name);await graphUploadFile(f.name,f.blob,getTok);}
-        if(zip){
-          const zipSizeMB=(zip.blob.size/(1024*1024)).toFixed(1);
-          toast('Uploading photos ('+zipSizeMB+' MB)… '+(++n)+'/'+total);
-          await graphUploadFile(zip.name,zip.blob,getTok,frac=>{
-            // Show progress every ~10% so the user knows it's still running.
-            const pct=Math.round(frac*100); if(pct%10===0)toast('Uploading photos… '+pct+'%');
-          });
+        const total=outFiles.length+(zip?1:0);
+        // Total bytes across ALL uploads — that's what the 1..100% bar tracks.
+        // Byte-weighted (not file-weighted) so a big photo zip doesn't jump from
+        // 33% to 100% in one step when the two small CSVs finish.
+        const totalBytes=outFiles.reduce((a,f)=>a+f.blob.size,0)+(zip?zip.blob.size:0);
+        let bytesDone=0, n=0;
+        for(const f of outFiles){
+          n++;
+          prog.update({file:f.name,idx:n,total,frac:totalBytes?bytesDone/totalBytes:0});
+          await graphUploadFile(f.name,f.blob,getTok);
+          bytesDone+=f.blob.size;
+          prog.update({file:f.name,idx:n,total,frac:totalBytes?bytesDone/totalBytes:0});
         }
+        if(zip){
+          n++;
+          const zipStart=bytesDone;
+          prog.update({file:zip.name,idx:n,total,frac:totalBytes?zipStart/totalBytes:0});
+          await graphUploadFile(zip.name,zip.blob,getTok,fileFrac=>{
+            const done=zipStart+fileFrac*zip.blob.size;
+            prog.update({file:zip.name,idx:n,total,frac:totalBytes?done/totalBytes:0});
+          });
+          bytesDone+=zip.blob.size;
+          prog.update({file:zip.name,idx:n,total,frac:1});
+        }
+        prog.close();releaseWakeLock(wake);
         if(finishExportClearPrompt(items,edits,photoFiles.length,'uploaded to OneDrive → Crop Inspection → inbox')){await clearQueue(items,edits);toast('Queue cleared');}else toast('Queue kept');
         refreshHome();$('#btnExport').disabled=false;return;
       }catch(e){
+        prog.close();releaseWakeLock(wake);
         console.warn('OneDrive upload failed',e);
         const msg=(e&&e.message)?e.message:String(e);
         // If we're in the middle of an MSAL redirect, don't build a share modal —
