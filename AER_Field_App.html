@@ -72,17 +72,27 @@
   .list-item .t{font-weight:700}
   .list-item .s{font-size:13px;color:var(--muted)}
   .fab-note{font-size:13px;color:var(--muted);margin:6px 2px}
-  /* camera */
-  #camWrap{position:fixed;inset:0;background:#000;z-index:50;display:none;flex-direction:column}
-  #camWrap.on{display:flex}
-  #camVideo{flex:1;width:100%;object-fit:cover;background:#000}
-  #scanVideo{flex:1;width:100%;object-fit:cover;background:#000}
-  .cambar{display:flex;gap:12px;align-items:center;justify-content:center;padding:16px;padding-bottom:calc(52px + env(safe-area-inset-bottom));background:#000}
-  .shutter{width:68px;height:68px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.4);cursor:pointer}
-  .camclose{position:absolute;top:calc(10px + env(safe-area-inset-top));left:12px;background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-size:15px;z-index:2;cursor:pointer}
-  .scan-frame{position:absolute;top:0;left:0;right:0;bottom:80px;display:flex;align-items:center;justify-content:center;pointer-events:none}
-  .scan-frame .box{width:70vw;max-width:320px;height:70vw;max-height:320px;border:3px solid var(--yellow);border-radius:18px;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
-  .scan-hint{position:absolute;bottom:96px;left:0;right:0;text-align:center;color:#fff;font-size:14px;text-shadow:0 1px 2px #000}
+  /* camera — video fills the whole viewport, controls float on top so they stay put in landscape too */
+  #camWrap{position:fixed;inset:0;background:#000;z-index:50;display:none}
+  #camWrap.on{display:block}
+  #scanWrap{position:fixed;inset:0;background:#000;z-index:60;display:none}
+  #scanWrap.on{display:block}
+  #camVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+  #scanVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+  .cambar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:12px;align-items:center;justify-content:center;padding:16px;padding-bottom:calc(28px + env(safe-area-inset-bottom));background:linear-gradient(to top,rgba(0,0,0,.75),rgba(0,0,0,0));z-index:4}
+  .shutter{width:76px;height:76px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.5);cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.5);flex:0 0 auto}
+  .camclose{position:absolute;top:calc(10px + env(safe-area-inset-top));left:12px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-size:15px;z-index:5;cursor:pointer}
+  .camtorch{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-size:15px;z-index:5;cursor:pointer;display:none}
+  .camtorch.available{display:inline-block}
+  .camtorch.on{background:var(--yellow);color:#000}
+  .scan-frame{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2}
+  .scan-frame .qrbox{width:min(72vmin,320px);height:min(72vmin,320px);border:3px solid var(--yellow);border-radius:18px;box-shadow:0 0 0 100vmax rgba(0,0,0,.55);background:transparent}
+  .scan-hint{position:absolute;top:calc(64px + env(safe-area-inset-top));left:0;right:0;text-align:center;color:#fff;font-size:14px;text-shadow:0 1px 3px #000;z-index:3;pointer-events:none;padding:0 16px}
+  /* Landscape — move the shutter/manual bar to the right side so it stays reachable */
+  @media (orientation:landscape){
+    .cambar{left:auto;top:0;bottom:0;right:0;padding:16px;padding-right:calc(28px + env(safe-area-inset-right));flex-direction:column;background:linear-gradient(to left,rgba(0,0,0,.75),rgba(0,0,0,0))}
+    .scan-hint{top:auto;bottom:calc(20px + env(safe-area-inset-bottom));right:150px;left:16px}
+  }
   /* photo viewer */
   #photoViewer{position:fixed;inset:0;background:#000;z-index:70;display:none;flex-direction:column}
   #photoViewer.on{display:flex}
@@ -372,9 +382,10 @@
 
 <!-- Camera overlay (photo) -->
 <div id="camWrap">
-  <button class="camclose" id="camClose">✕ Close</button>
   <video id="camVideo" autoplay playsinline muted></video>
-  <div class="cambar"><button class="shutter" id="camShutter" aria-label="Foto"></button></div>
+  <button class="camclose" id="camClose">✕ Close</button>
+  <button class="camtorch" id="camTorch" title="Toggle torch">🔦</button>
+  <div class="cambar"><button class="shutter" id="camShutter" aria-label="Photo"></button></div>
 </div>
 
 <!-- Photo viewer -->
@@ -394,17 +405,16 @@
   </div>
 </div>
 
-<!-- Scan overlay (QR) -->
-<div id="scanWrap" class="modal" style="background:#000;padding:0">
-  <div style="position:fixed;inset:0;display:flex;flex-direction:column">
-    <button class="camclose" id="scanClose">✕ Close</button>
-    <video id="scanVideo" autoplay playsinline muted></video>
-    <div class="scan-frame"><div class="box"></div></div>
-    <div class="scan-hint">Point at the batch QR code</div>
-    <div class="cambar" style="flex-direction:column;gap:8px">
-      <div class="muted" style="color:#fff;font-size:13px">Scanner not working?</div>
-      <button class="btn ghost sm" id="scanManual">Enter batch code manually</button>
-    </div>
+<!-- Scan overlay (QR) — own container (NOT a .modal, to avoid the .modal .box white-box collision) -->
+<div id="scanWrap">
+  <video id="scanVideo" autoplay playsinline muted></video>
+  <div class="scan-frame"><div class="qrbox"></div></div>
+  <div class="scan-hint">Hold the QR code inside the yellow frame</div>
+  <button class="camclose" id="scanClose">✕ Close</button>
+  <button class="camtorch" id="scanTorch" title="Toggle torch">🔦</button>
+  <div class="cambar" style="flex-direction:column;gap:8px">
+    <div class="muted" style="color:#fff;font-size:13px;text-shadow:0 1px 2px #000">Scanner not working?</div>
+    <button class="btn ghost sm" id="scanManual">Enter batch code manually</button>
   </div>
 </div>
 
@@ -453,7 +463,7 @@
 <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-08-31 · r16';
+const APP_VERSION='2026-09-21 · r17';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -465,7 +475,7 @@ const APP_VERSION='2026-08-31 · r16';
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const el = (t,props={},kids=[])=>{const e=document.createElement(t);Object.assign(e,props);for(const k of [].concat(kids))if(k!=null)e.append(k);return e;};
-function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2600);}
+function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),ms||2600);}
 // Absorb stray "ghost"/pass-through taps for a short window after a full-screen
 // overlay closes, so a lingering tap can't hit a button underneath (e.g. Review & Save).
 function tapShield(ms){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;z-index:99999;background:transparent';
@@ -725,15 +735,31 @@ function pickFile(accept,cb){
 /* ================================================================
    QR Scan
    ================================================================ */
-let scanStream=null,scanRAF=null,barcodeDetector=null;
+let scanStream=null,scanRAF=null,barcodeDetector=null,scanTrack=null,scanTorchOn=false;
 function cameraBlockedMsg(){return (!window.isSecureContext)?'Camera needs an https page — open the hosted version, not the local file.':'Camera unavailable on this device/browser.';}
 async function startScan(){
   if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast(cameraBlockedMsg()+' Enter the code manually.');manualBatch();return;}
   try{
-    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+    // Ask for a HIGH resolution stream — small/blurry labels need it. Also request
+    // continuous autofocus where the browser supports it.
+    scanStream=await navigator.mediaDevices.getUserMedia({video:{
+      facingMode:{ideal:'environment'},
+      width:{ideal:1920},height:{ideal:1080},
+      focusMode:{ideal:'continuous'},
+      advanced:[{focusMode:'continuous'}]
+    }}).catch(async()=>navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}));
   }catch(e){toast('Camera unavailable — enter the code manually');manualBatch();return;}
   const v=$('#scanVideo');v.srcObject=scanStream;$('#scanWrap').classList.add('on');
   await v.play().catch(()=>{});
+  // Cache the video track and try to enable continuous autofocus explicitly.
+  scanTrack=scanStream.getVideoTracks()[0]||null;
+  try{const caps=scanTrack&&scanTrack.getCapabilities?scanTrack.getCapabilities():{};
+    if(caps.focusMode&&caps.focusMode.includes&&caps.focusMode.includes('continuous')){
+      await scanTrack.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
+    }
+    // Show the torch button only when the device actually supports it.
+    const tb=$('#scanTorch');if(tb){scanTorchOn=false;tb.classList.remove('on');tb.classList.toggle('available',!!caps.torch);}
+  }catch(e){}
   if('BarcodeDetector' in window){
     try{barcodeDetector=new BarcodeDetector({formats:['qr_code','code_128','code_39','ean_13','data_matrix']});}
     catch(e){barcodeDetector=null;}
@@ -747,7 +773,7 @@ async function scanLoop(){
   try{
     if(v.readyState>=2){
       const codes=await barcodeDetector.detect(v);
-      if(codes&&codes.length){const raw=(codes[0].rawValue||'').trim();if(raw){stopScan();onBatchCode(raw);return;}}
+      if(codes&&codes.length){const raw=(codes[0].rawValue||'').trim();if(raw){navigator.vibrate&&navigator.vibrate(60);stopScan();onBatchCode(raw);return;}}
     }
   }catch(e){}
   scanRAF=requestAnimationFrame(scanLoop);
@@ -755,10 +781,34 @@ async function scanLoop(){
 function stopScan(){
   if(scanRAF)cancelAnimationFrame(scanRAF);scanRAF=null;
   if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}
+  scanTrack=null;scanTorchOn=false;
+  const tb=$('#scanTorch');if(tb){tb.classList.remove('on','available');}
   $('#scanWrap').classList.remove('on');
+}
+async function toggleScanTorch(){
+  if(!scanTrack)return;
+  try{
+    scanTorchOn=!scanTorchOn;
+    await scanTrack.applyConstraints({advanced:[{torch:scanTorchOn}]});
+    $('#scanTorch').classList.toggle('on',scanTorchOn);
+  }catch(e){toast('Torch not available on this device');scanTorchOn=false;$('#scanTorch').classList.remove('on');}
+}
+// Tap the video to trigger a single autofocus pass — helps snap onto small labels.
+async function tapFocus(track,ev){
+  if(!track||!track.getCapabilities)return;
+  try{
+    const caps=track.getCapabilities()||{};
+    if(caps.focusMode&&caps.focusMode.includes&&caps.focusMode.includes('single-shot')){
+      await track.applyConstraints({advanced:[{focusMode:'single-shot'}]});
+      // Return to continuous after ~1s so the camera keeps tracking.
+      setTimeout(()=>{if(caps.focusMode.includes('continuous')){track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});}},1000);
+    }
+  }catch(e){}
 }
 $('#scanClose').onclick=stopScan;
 $('#scanManual').onclick=()=>{stopScan();manualBatch();};
+$('#scanTorch').onclick=toggleScanTorch;
+$('#scanVideo').addEventListener('click',ev=>tapFocus(scanTrack,ev));
 function manualBatch(){
   const code=prompt('Batch code:');
   if(code&&code.trim())onBatchCode(code.trim());
@@ -1064,7 +1114,7 @@ $$('.mic').forEach(b=>b.onclick=()=>{
 /* ================================================================
    Camera + watermark (photo)
    ================================================================ */
-let camStream=null;
+let camStream=null,camTrack=null,camTorchOn=false;
 // Track physical device tilt so we can keep the info bar at the visual bottom
 // even when the screen doesn't rotate (auto-rotate off, or a locked PWA manifest).
 let lastGamma=0,gammaSeen=false;
@@ -1076,17 +1126,39 @@ function captureRotation(){
   if(gammaSeen&&Math.abs(lastGamma)>35)return lastGamma>0?90:-90; // screen stayed portrait but phone is physically landscape
   return 0;
 }
-function enterFsQuiet(){try{const e=document.documentElement;if(e.requestFullscreen&&!document.fullscreenElement)e.requestFullscreen({navigationUI:'hide'}).catch(()=>{});}catch(_){}}
-function exitFsQuiet(){try{if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});}catch(_){}}
+// NOTE: intentionally NOT calling requestFullscreen — the browser's
+// "Press Esc to exit full screen / <site> is now full-screen" toast used to
+// land exactly on the shutter and hide the button in landscape. Removed r17.
 async function openPhotoCam(){
   if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast(cameraBlockedMsg());return;}
-  enterFsQuiet(); // hide the browser/system (Google) bar while shooting; needs the current tap gesture
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:3000},height:{ideal:4000}}});}
-  catch(e){exitFsQuiet();toast('Camera unavailable');return;}
+  catch(e){toast('Camera unavailable');return;}
   const v=$('#camVideo');v.srcObject=camStream;$('#camWrap').classList.add('on');await v.play().catch(()=>{});
+  camTrack=camStream.getVideoTracks()[0]||null;
+  try{const caps=camTrack&&camTrack.getCapabilities?camTrack.getCapabilities():{};
+    if(caps.focusMode&&caps.focusMode.includes&&caps.focusMode.includes('continuous')){
+      await camTrack.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
+    }
+    const tb=$('#camTorch');if(tb){camTorchOn=false;tb.classList.remove('on');tb.classList.toggle('available',!!caps.torch);}
+  }catch(e){}
 }
-function closeCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}$('#camWrap').classList.remove('on');exitFsQuiet();}
+function closeCam(){
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
+  camTrack=null;camTorchOn=false;
+  const tb=$('#camTorch');if(tb){tb.classList.remove('on','available');}
+  $('#camWrap').classList.remove('on');
+}
+async function toggleCamTorch(){
+  if(!camTrack)return;
+  try{
+    camTorchOn=!camTorchOn;
+    await camTrack.applyConstraints({advanced:[{torch:camTorchOn}]});
+    $('#camTorch').classList.toggle('on',camTorchOn);
+  }catch(e){toast('Torch not available on this device');camTorchOn=false;$('#camTorch').classList.remove('on');}
+}
 $('#camClose').onclick=closeCam;
+$('#camTorch').onclick=toggleCamTorch;
+$('#camVideo').addEventListener('click',ev=>tapFocus(camTrack,ev));
 let _capturing=false;
 $('#camShutter').onclick=async(ev)=>{
   if(ev){ev.preventDefault();ev.stopPropagation();}
@@ -1375,15 +1447,33 @@ async function exportPackage(){
     // Path B: OneDrive direct upload (Microsoft Graph) — the phone route.
     if(isOneDriveConnected()){
       try{
-        const token=await getGraphToken();
+        // A token getter — called before every request so a retry after a
+        // 401/expired-token can re-acquire cleanly. Interactive fallback is
+        // built into getGraphToken.
+        const getTok=()=>getGraphToken(false);
+        // Sanity-probe the token once up-front. If MSAL needs interactive,
+        // it will redirect from inside getGraphToken and this call throws.
+        await getTok();
         const total=outFiles.length+(zip?1:0); let n=0;
-        for(const f of outFiles){toast('Uploading to OneDrive… '+(++n)+'/'+total);await graphUploadFile(f.name,f.blob,token);}
-        if(zip){toast('Uploading photos… '+(++n)+'/'+total);await graphUploadFile(zip.name,zip.blob,token);}
+        for(const f of outFiles){toast('Uploading to OneDrive… '+(++n)+'/'+total+' — '+f.name);await graphUploadFile(f.name,f.blob,getTok);}
+        if(zip){
+          const zipSizeMB=(zip.blob.size/(1024*1024)).toFixed(1);
+          toast('Uploading photos ('+zipSizeMB+' MB)… '+(++n)+'/'+total);
+          await graphUploadFile(zip.name,zip.blob,getTok,frac=>{
+            // Show progress every ~10% so the user knows it's still running.
+            const pct=Math.round(frac*100); if(pct%10===0)toast('Uploading photos… '+pct+'%');
+          });
+        }
         if(finishExportClearPrompt(items,edits,photoFiles.length,'uploaded to OneDrive → Crop Inspection → inbox')){await clearQueue(items,edits);toast('Queue cleared');}else toast('Queue kept');
         refreshHome();$('#btnExport').disabled=false;return;
       }catch(e){
         console.warn('OneDrive upload failed',e);
-        toast('OneDrive upload failed — you can share or download instead');
+        const msg=(e&&e.message)?e.message:String(e);
+        // If we're in the middle of an MSAL redirect, don't build a share modal —
+        // the page is being navigated away. When the user returns, they retry.
+        if(msg.indexOf('signing in')>=0){$('#btnExport').disabled=false;return;}
+        // Surface the actual reason so "13 obs stuck in queue" is diagnosable.
+        toast('OneDrive upload failed: '+msg.slice(0,140)+' — you can share or download instead',6000);
         // fall through to the share/download modal
       }
     }
@@ -1526,38 +1616,93 @@ async function disconnectOneDrive(){
   MSAL_READY=false;MSAL=null;
   toast('OneDrive disconnected — reconnect anytime in Settings');buildSettings();
 }
-async function getGraphToken(){
+async function getGraphToken(interactive){
   await initMsal();
   const acc=oneDriveAccount();
   if(!MSAL||!acc)throw new Error('OneDrive not connected');
-  const r=await MSAL.acquireTokenSilent({scopes:GRAPH_SCOPES,account:acc});
-  return r.accessToken;
+  try{
+    const r=await MSAL.acquireTokenSilent({scopes:GRAPH_SCOPES,account:acc});
+    return r.accessToken;
+  }catch(e){
+    // Silent renewal failed (token expired, consent revoked, etc.). Fall back to
+    // an interactive redirect so the user just signs in again and the queue
+    // survives instead of dying with "upload failed".
+    const needsInteractive=(e&&(e.name==='InteractionRequiredAuthError'||e.errorCode==='consent_required'||e.errorCode==='login_required'||e.errorCode==='interaction_required'))||interactive;
+    if(needsInteractive){
+      toast('OneDrive session expired — signing you back in…');
+      // Remember the queue is waiting; after redirect back, boot re-inits MSAL.
+      await MSAL.acquireTokenRedirect({scopes:GRAPH_SCOPES,account:acc,prompt:'select_account'});
+      throw new Error('OneDrive: signing in — try Export again after sign-in');
+    }
+    throw e;
+  }
 }
 function graphPath(name){return (ONEDRIVE_INBOX+'/'+name).split('/').map(encodeURIComponent).join('/');}
-async function graphPutSmall(name,blob,token){
-  const url='https://graph.microsoft.com/v1.0/me/drive/root:/'+graphPath(name)+':/content';
-  const r=await fetch(url,{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/octet-stream'},body:blob});
-  if(!r.ok)throw new Error('upload '+r.status+' '+(await r.text().catch(()=>'')).slice(0,180));
-  return r.json().catch(()=>({}));
+function _sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+async function _fetchWithTimeout(url,opts,timeoutMs){
+  const ctl=('AbortController' in window)?new AbortController():null;
+  const to=ctl?setTimeout(()=>ctl.abort(),timeoutMs):null;
+  try{return await fetch(url,Object.assign({},opts,ctl?{signal:ctl.signal}:{}));}
+  finally{if(to)clearTimeout(to);}
 }
-async function graphPutLarge(name,blob,token){
-  const url='https://graph.microsoft.com/v1.0/me/drive/root:/'+graphPath(name)+':/createUploadSession';
-  const s=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'replace'}})});
-  if(!s.ok)throw new Error('session '+s.status+' '+(await s.text().catch(()=>'')).slice(0,180));
-  const {uploadUrl}=await s.json();
+async function graphPutSmall(name,blob,tokenGetter){
+  const url='https://graph.microsoft.com/v1.0/me/drive/root:/'+graphPath(name)+':/content';
+  let lastErr=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      const token=await tokenGetter();
+      const r=await _fetchWithTimeout(url,{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/octet-stream'},body:blob},60000);
+      if(r.ok)return r.json().catch(()=>({}));
+      // 401 = token issue → force interactive next attempt. 5xx / 429 = retry after backoff.
+      const body=(await r.text().catch(()=>'')).slice(0,180);
+      if(r.status===401){lastErr=new Error('upload 401 '+body);continue;}
+      if(r.status>=500||r.status===429||r.status===408){lastErr=new Error('upload '+r.status+' '+body);await _sleep(attempt*1500);continue;}
+      throw new Error('upload '+r.status+' '+body);
+    }catch(e){lastErr=e;if(attempt<3)await _sleep(attempt*1500);}
+  }
+  throw lastErr||new Error('upload failed');
+}
+async function graphPutLarge(name,blob,tokenGetter,progress){
+  // Create the session, then chunk-upload with per-chunk retry so a single
+  // network hiccup can no longer kill a 50 MB photo zip.
+  let session=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      const token=await tokenGetter();
+      const s=await _fetchWithTimeout('https://graph.microsoft.com/v1.0/me/drive/root:/'+graphPath(name)+':/createUploadSession',
+        {method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'replace'}})},30000);
+      if(!s.ok){const body=(await s.text().catch(()=>'')).slice(0,180);if(s.status===401)continue;throw new Error('session '+s.status+' '+body);}
+      session=await s.json();break;
+    }catch(e){if(attempt===3)throw e;await _sleep(attempt*1500);}
+  }
+  const uploadUrl=session.uploadUrl;
   const total=blob.size, CH=5*320*1024; let start=0, last=null;
   while(start<total){
     const end=Math.min(start+CH,total);
-    const cr=await fetch(uploadUrl,{method:'PUT',headers:{'Content-Range':'bytes '+start+'-'+(end-1)+'/'+total},body:blob.slice(start,end)});
-    if(cr.status===202){/* keep going */}
-    else if(cr.status===200||cr.status===201){last=await cr.json().catch(()=>({}));}
-    else{throw new Error('chunk '+cr.status+' '+(await cr.text().catch(()=>'')).slice(0,180));}
+    let ok=false,chunkErr=null;
+    for(let attempt=1;attempt<=4;attempt++){
+      try{
+        const cr=await _fetchWithTimeout(uploadUrl,{method:'PUT',headers:{'Content-Range':'bytes '+start+'-'+(end-1)+'/'+total},body:blob.slice(start,end)},90000);
+        if(cr.status===202){ok=true;break;}
+        if(cr.status===200||cr.status===201){last=await cr.json().catch(()=>({}));ok=true;break;}
+        const body=(await cr.text().catch(()=>'')).slice(0,180);
+        if(cr.status===416||cr.status===409){
+          // The server already got this range — advance and continue.
+          ok=true;break;
+        }
+        chunkErr=new Error('chunk '+cr.status+' '+body);
+        if(cr.status>=500||cr.status===429||cr.status===408){await _sleep(attempt*2000);continue;}
+        throw chunkErr;
+      }catch(e){chunkErr=e;await _sleep(attempt*2000);}
+    }
+    if(!ok)throw chunkErr||new Error('chunk failed');
     start=end;
+    if(progress)progress(start/total);
   }
   return last||{};
 }
-async function graphUploadFile(name,blob,token){
-  return (blob.size<=4*1024*1024)?graphPutSmall(name,blob,token):graphPutLarge(name,blob,token);
+async function graphUploadFile(name,blob,tokenGetter,progress){
+  return (blob.size<=4*1024*1024)?graphPutSmall(name,blob,tokenGetter):graphPutLarge(name,blob,tokenGetter,progress);
 }
 
 /* ================================================================
