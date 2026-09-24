@@ -486,7 +486,7 @@
 <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-09-21 · r18';
+const APP_VERSION='2026-09-24 · r19';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -1111,22 +1111,85 @@ $('#pvDelete').onclick=async()=>{
   stage.addEventListener('pointerup',up);stage.addEventListener('pointercancel',up);
 })();
 
-/* ---------- Speech to text — continuous, keeps listening until stopped ---------- */
-let recog=null,recogBtn=null;
-function stopSpeech(){if(recog){recog._active=false;try{recog.stop();}catch(e){}}if(recogBtn){recogBtn.textContent='🎤';recogBtn=null;}}
+/* ---------- Speech to text — continuous, keeps listening until stopped ----------
+   Android Chrome ends recognition every ~60 s (or on silence) and we restart it.
+   Two well-known duplication bugs are guarded against here — that's what was
+   producing the "hij herhaalt talloze keren mijn verhaal" behaviour before:
+     1) WITHIN one session, some phones deliver the same final result at the
+        same index multiple times because `ev.resultIndex` doesn't advance.
+        Guard: only commit a final when its index is HIGHER than the highest
+        final index we've already committed in this session.
+     2) On restart (auto or manual), some Androids re-emit the previous
+        session's last final as index 0 of the new session. Guard: skip a
+        final whose text matches the last-committed one (case-insensitive).
+   State lives outside the recog object so it survives restarts.
+*/
+let recog=null, recogBtn=null;
+let _sp={ta:null,prefix:'',committed:[],lastCommittedLC:'',sessionMaxFinal:-1};
+
+function stopSpeech(){
+  if(recog){recog._active=false;try{recog.stop();}catch(e){}}
+  if(recogBtn){recogBtn.textContent='🎤';recogBtn=null;}
+}
+function _renderSpeech(interim){
+  if(!_sp.ta)return;
+  const body=(_sp.committed.join(' ')+(interim?' '+interim:'')).trim();
+  _sp.ta.value=(_sp.prefix+body).replace(/\s+/g,' ').trim();
+}
 function startSpeech(ta,btn){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){toast('Speech recognition not available on this device');return;}
-  recog=new SR();recog.lang=SETTINGS.speechLang||'en-US';recog.interimResults=true;recog.continuous=true;
-  let committed=ta.value?ta.value.trim()+' ':'';
+  recog=new SR();
+  recog.lang=SETTINGS.speechLang||'en-US';
+  recog.interimResults=true;
+  recog.continuous=true;
+  // Snapshot the textarea contents at press-time; everything typed BEFORE the
+  // mic went on is preserved, everything dictated after it is rebuilt from
+  // committed[] on every event so a re-emitted result can't leak through.
+  _sp.ta=ta;
+  _sp.prefix=ta.value?ta.value.trim()+' ':'';
+  _sp.committed=[];
+  _sp.lastCommittedLC='';
+  _sp.sessionMaxFinal=-1;
+
   recog.onresult=(ev)=>{
     let interim='';
-    for(let i=ev.resultIndex;i<ev.results.length;i++){const r=ev.results[i];
-      if(r.isFinal)committed+=r[0].transcript.trim()+' ';else interim+=r[0].transcript;}
-    ta.value=(committed+interim).replace(/\s+/g,' ');
+    for(let i=0;i<ev.results.length;i++){
+      const r=ev.results[i];
+      const text=((r[0]&&r[0].transcript)||'').trim();
+      if(!text)continue;
+      if(r.isFinal){
+        if(i>_sp.sessionMaxFinal){
+          _sp.sessionMaxFinal=i;
+          const lc=text.toLowerCase();
+          if(lc!==_sp.lastCommittedLC){
+            _sp.committed.push(text);
+            _sp.lastCommittedLC=lc;
+          }
+        }
+      }else{
+        // Interim is rebuilt from scratch every event, so it can only grow or
+        // shrink — never accumulate duplicates.
+        interim+=(interim?' ':'')+text;
+      }
+    }
+    _renderSpeech(interim);
   };
-  recog.onerror=(e)=>{if(e&&(e.error==='not-allowed'||e.error==='service-not-allowed')){toast('Microphone permission needed');stopSpeech();}};
-  recog.onend=()=>{ if(recog&&recog._active){try{recog.start();}catch(e){}} else {recog=null;if(recogBtn){recogBtn.textContent='🎤';recogBtn=null;}} };
+
+  recog.onerror=(e)=>{
+    if(e&&(e.error==='not-allowed'||e.error==='service-not-allowed')){toast('Microphone permission needed');stopSpeech();}
+    // 'no-speech' / 'audio-capture' / 'network' / 'aborted' → onend restarts if _active.
+  };
+  recog.onend=()=>{
+    if(recog&&recog._active){
+      _sp.sessionMaxFinal=-1; // fresh index space in the new session
+      try{recog.start();}catch(e){}
+    }else{
+      recog=null;
+      if(recogBtn){recogBtn.textContent='🎤';recogBtn=null;}
+    }
+  };
+
   recog._active=true;recogBtn=btn;btn.textContent='⏹';
   try{recog.start();}catch(e){}
 }
