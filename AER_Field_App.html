@@ -486,7 +486,7 @@
 <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 <script>
 "use strict";
-const APP_VERSION='2026-09-24 · r19';
+const APP_VERSION='2026-09-24 · r20';
 /* ================================================================
    AER Field App — Fase 1 (PWA)
    Replaces the Flutter qc_app3 field app. Feature parity for
@@ -1162,15 +1162,30 @@ function startSpeech(ta,btn){
         if(i>_sp.sessionMaxFinal){
           _sp.sessionMaxFinal=i;
           const lc=text.toLowerCase();
-          if(lc!==_sp.lastCommittedLC){
+          const lastLC=_sp.lastCommittedLC;
+          if(lc===lastLC){
+            // exact re-echo — skip
+          } else if(lastLC && (lc.startsWith(lastLC+' ') || lc.startsWith(lastLC+','))){
+            // Progressive finalization (r19-onwards fix): Android Chrome sometimes
+            // commits each interim as a separate final at a new index — you get
+            // "the / the plants / the plants are / …" all pushed one after
+            // another. When the new final CONTAINS the last committed as a
+            // prefix, replace instead of append: it's the same phrase growing.
+            _sp.committed[_sp.committed.length-1]=text;
+            _sp.lastCommittedLC=lc;
+          } else {
             _sp.committed.push(text);
             _sp.lastCommittedLC=lc;
           }
         }
       }else{
         // Interim is rebuilt from scratch every event, so it can only grow or
-        // shrink — never accumulate duplicates.
-        interim+=(interim?' ':'')+text;
+        // shrink — never accumulate duplicates. Only take interims that live
+        // beyond the last finalized index, otherwise a stale mid-progression
+        // interim could tag onto the tail.
+        if(i>_sp.sessionMaxFinal){
+          interim+=(interim?' ':'')+text;
+        }
       }
     }
     _renderSpeech(interim);
